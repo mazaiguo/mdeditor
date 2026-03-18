@@ -81,6 +81,7 @@
       :visible="showExport"
       :markdown="content"
       :html="renderedHtml"
+      :theme="theme"
       @close="showExport = false"
     />
 

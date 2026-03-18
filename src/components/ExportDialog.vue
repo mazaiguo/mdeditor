@@ -47,20 +47,21 @@
                 </svg>
               </div>
               <div class="export-label">HTML</div>
-              <div class="export-desc">Standalone page</div>
+              <div class="export-desc">Styled page</div>
             </button>
-            <button class="export-option-btn" @click="exportAs('txt')">
+            <button class="export-option-btn" @click="exportAs('pdf')">
               <div class="export-icon">
                 <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                   <polyline points="14 2 14 8 20 8"/>
-                  <line x1="16" y1="13" x2="8" y2="13"/>
-                  <line x1="16" y1="17" x2="8" y2="17"/>
-                  <polyline points="10 9 9 9 8 9"/>
+                  <path d="M9 13h1.5a1.5 1.5 0 0 1 0 3H9v-3z"/>
+                  <path d="M12 16h1a2 2 0 0 0 0-4h-1v4z"/>
+                  <path d="M15 13v3"/>
+                  <line x1="15" y1="13" x2="17" y2="13"/>
                 </svg>
               </div>
-              <div class="export-label">Plain Text</div>
-              <div class="export-desc">.txt file</div>
+              <div class="export-label">PDF</div>
+              <div class="export-desc">Print / Save as PDF</div>
             </button>
             <button class="export-option-btn" :disabled="exporting" @click="exportAs('docx')">
               <div class="export-icon">
@@ -81,12 +82,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 
 const props = defineProps<{
   visible: boolean
   markdown: string
   html: string
+  theme: string
 }>()
 
 const emit = defineEmits<{
@@ -96,10 +98,23 @@ const emit = defineEmits<{
 const filename = ref('document')
 const exporting = ref(false)
 
+watch(() => props.visible, (val) => {
+  if (val) filename.value = getTitleFromMarkdown(props.markdown)
+})
+
+function getTitleFromMarkdown(md: string): string {
+  const fmMatch = md.match(/^---\r?\n([\s\S]*?)\r?\n---/)
+  if (fmMatch) {
+    const titleMatch = fmMatch[1].match(/^title:\s*['"]?(.+?)['"]?\s*$/m)
+    if (titleMatch) return titleMatch[1].trim()
+  }
+  const h1 = md.match(/^#\s+(.+)$/m)
+  if (h1) return h1[1].trim()
+  return 'document'
+}
+
 function downloadFile(content: string | ArrayBuffer, name: string, type: string) {
-  const blob = content instanceof ArrayBuffer
-    ? new Blob([content], { type })
-    : new Blob([content], { type })
+  const blob = new Blob([content], { type })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
@@ -108,30 +123,20 @@ function downloadFile(content: string | ArrayBuffer, name: string, type: string)
   URL.revokeObjectURL(url)
 }
 
-function exportAs(format: 'md' | 'html' | 'txt' | 'docx') {
-  const base = filename.value.trim() || 'document'
-
-  if (format === 'md') {
-    downloadFile(props.markdown, `${base}.md`, 'text/markdown')
-  } else if (format === 'txt') {
-    const text = props.markdown.replace(/[#*`_~\[\]()>-]/g, '').replace(/\n{3,}/g, '\n\n')
-    downloadFile(text, `${base}.txt`, 'text/plain')
-  } else if (format === 'html') {
-    const fullHtml = buildFullHtml(base)
-    downloadFile(fullHtml, `${base}.html`, 'text/html')
-    emit('close')
-  } else if (format === 'docx') {
-    exporting.value = true
-    exportDocx(base).finally(() => {
-      exporting.value = false
-      emit('close')
-    })
-    return
+function getAllStyles(): string {
+  const parts: string[] = []
+  for (const sheet of Array.from(document.styleSheets)) {
+    try {
+      parts.push(Array.from(sheet.cssRules).map(r => r.cssText).join('\n'))
+    } catch {
+      // skip cross-origin sheets
+    }
   }
-  emit('close')
+  return parts.join('\n')
 }
 
-function buildFullHtml(title: string) {
+function buildFullHtml(title: string): string {
+  const styles = getAllStyles()
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -139,36 +144,58 @@ function buildFullHtml(title: string) {
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>${title}</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fff; color: #1d1d1f; line-height: 1.8; padding: 40px 20px; }
-  .container { max-width: 800px; margin: 0 auto; }
-  h1,h2,h3,h4,h5,h6 { font-weight: 600; margin: 1.5em 0 0.6em; line-height: 1.3; }
-  h1 { font-size: 2em; border-bottom: 2px solid #e5e5e7; padding-bottom: 0.3em; }
-  h2 { font-size: 1.5em; border-bottom: 1px solid #e5e5e7; padding-bottom: 0.2em; }
-  p { margin: 0.8em 0; }
-  code { font-family: 'SF Mono', Menlo, monospace; background: #f0f0f5; color: #c7254e; padding: 2px 6px; border-radius: 4px; font-size: 0.875em; }
-  pre { background: #1d1d1f; border-radius: 12px; padding: 20px; overflow-x: auto; margin: 1.2em 0; }
-  pre code { background: none; color: #e8e8ed; font-size: 0.875em; }
-  blockquote { border-left: 4px solid #0066cc; padding: 8px 16px; margin: 1em 0; background: rgba(0,102,204,0.05); border-radius: 0 8px 8px 0; }
-  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
-  th,td { border: 1px solid #e5e5e7; padding: 8px 12px; text-align: left; }
-  th { background: #f5f5f7; font-weight: 600; }
-  img { max-width: 100%; border-radius: 8px; }
-  a { color: #0066cc; text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  hr { border: none; border-top: 1px solid #e5e5e7; margin: 2em 0; }
-  mark { background: #fff3b0; padding: 1px 2px; border-radius: 2px; }
-  .code-block-wrapper { background: #1d1d1f; border-radius: 12px; margin: 1.2em 0; overflow: hidden; }
-  .code-block-header { background: #2d2d2f; padding: 6px 14px; font-size: 12px; color: #8e8e93; }
-  .code-block-body pre { background: transparent; padding: 12px 14px; color: #e8e8ed; }
+${styles}
+body { margin: 0; padding: 40px 20px; background: #fff; }
+.preview-pane { max-width: 900px; margin: 0 auto; }
+@media print {
+  body { padding: 0; }
+  .preview-pane { max-width: 100%; }
+}
 </style>
 </head>
 <body>
-<div class="container">
+<div class="preview-pane theme-${props.theme}">
 ${props.html}
 </div>
 </body>
 </html>`
+}
+
+function exportAs(format: 'md' | 'html' | 'pdf' | 'docx') {
+  const base = filename.value.trim() || 'document'
+
+  if (format === 'md') {
+    downloadFile(props.markdown, `${base}.md`, 'text/markdown')
+    emit('close')
+  } else if (format === 'html') {
+    downloadFile(buildFullHtml(base), `${base}.html`, 'text/html')
+    emit('close')
+  } else if (format === 'pdf') {
+    exportPdf(base)
+  } else if (format === 'docx') {
+    exporting.value = true
+    exportDocx(base).finally(() => {
+      exporting.value = false
+      emit('close')
+    })
+  }
+}
+
+function exportPdf(title: string) {
+  const html = buildFullHtml(title)
+  const win = window.open('', '_blank')
+  if (!win) {
+    alert('Pop-up was blocked. Please allow pop-ups for this page.')
+    return
+  }
+  win.document.open()
+  win.document.write(html)
+  win.document.close()
+  setTimeout(() => {
+    win.focus()
+    win.print()
+  }, 600)
+  emit('close')
 }
 
 async function exportDocx(base: string) {
@@ -187,7 +214,7 @@ async function exportDocx(base: string) {
     URL.revokeObjectURL(url)
   } catch (err) {
     console.error('Word export failed:', err)
-    alert('Word 导出失败，请检查控制台')
+    alert('Word export failed, check the console.')
   }
 }
 </script>
