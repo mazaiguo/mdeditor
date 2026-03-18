@@ -5,8 +5,6 @@ services:
     restart: unless-stopped
     ports:
       - "5080:5080"
-    volumes:
-      - /vol1/1000/mdeditor/images:/app/dist/images
     environment:
       - PORT=5080
       - TZ=Asia/Shanghai

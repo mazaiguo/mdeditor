@@ -20,8 +20,6 @@ ENV NODE_ENV=production
 COPY --from=builder /app/dist ./dist
 COPY server.mjs ./
 
-RUN mkdir -p dist/images
-
 EXPOSE 5080
 
 CMD ["node", "server.mjs"]
