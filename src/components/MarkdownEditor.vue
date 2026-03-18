@@ -325,8 +325,9 @@ function insertRaw(text: string) {
   editorView.focus()
 }
 
-// PicGo paste upload
-const picgoServerUrl = useLocalStorage('picgo-server-url', 'http://127.0.0.1:36677')
+// PicGo paste upload — default URL uses current hostname so NAS deploys work automatically
+const defaultPicGoUrl = `http://${window.location.hostname}:36677`
+const picgoServerUrl = useLocalStorage('picgo-server-url', defaultPicGoUrl)
 const isUploadingImage = ref(false)
 
 function getImageTimestamp(): string {
@@ -375,6 +376,15 @@ async function saveImageLocally(file: File): Promise<string | null> {
     console.error('Local image save failed:', err)
     return null
   }
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
 }
 
 async function uploadPathToPicGo(filePath: string): Promise<string | null> {
@@ -428,16 +438,19 @@ function handlePasteImage(e: ClipboardEvent) {
         if (url) {
           isUploadingImage.value = false
           insertRaw(`![image-${getImageTimestamp()}](${url})`)
-        } else {
-          // Fallback: save locally instead of base64
-          const localPath = await saveImageLocally(file)
-          isUploadingImage.value = false
-          if (localPath) {
-            insertRaw(`![image-${getImageTimestamp()}](${localPath})`)
-          } else {
-            console.warn('Both PicGo and local save failed for pasted image')
-          }
+          return
         }
+        // Fallback 1: save to local server
+        const localPath = await saveImageLocally(file)
+        if (localPath) {
+          isUploadingImage.value = false
+          insertRaw(`![image-${getImageTimestamp()}](${localPath})`)
+          return
+        }
+        // Fallback 2: embed as base64 so the preview always works
+        const dataUrl = await fileToDataUrl(file)
+        isUploadingImage.value = false
+        insertRaw(`![image-${getImageTimestamp()}](${dataUrl})`)
       })
       return
     }
@@ -457,5 +470,37 @@ function handlePasteImage(e: ClipboardEvent) {
   }
 }
 
-defineExpose({ insertAtCursor })
+async function pickAndInsertLocalImage() {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'image/*'
+  input.onchange = async () => {
+    const file = input.files?.[0]
+    if (!file) return
+    const alt = file.name.replace(/\.[^.]+$/, '')
+    isUploadingImage.value = true
+
+    // Try PicGo first
+    const url = await uploadBinaryToPicGo(file)
+    if (url) {
+      isUploadingImage.value = false
+      insertRaw(`![${alt}](${url})`)
+      return
+    }
+    // Try local server save
+    const localPath = await saveImageLocally(file)
+    if (localPath) {
+      isUploadingImage.value = false
+      insertRaw(`![${alt}](${localPath})`)
+      return
+    }
+    // Final fallback: base64 embed
+    const dataUrl = await fileToDataUrl(file)
+    isUploadingImage.value = false
+    insertRaw(`![${alt}](${dataUrl})`)
+  }
+  input.click()
+}
+
+defineExpose({ insertAtCursor, pickAndInsertLocalImage })
 </script>

@@ -31,7 +31,7 @@
           </div>
           <div class="picgo-tip">
             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-            PicGo 请求由<b>浏览器</b>直接发起。NAS 部署时，填 <code>127.0.0.1</code> 即可连接本机 PicGo。
+            PicGo 请求由<b>浏览器</b>直接发起。已自动使用当前页面的主机地址作为默认值。若 PicGo 在 NAS 上运行，保持默认即可；若在本机，请改为 <code>http://127.0.0.1:36677</code>。
           </div>
 
           <div
@@ -97,7 +97,8 @@ const emit = defineEmits<{
   insert: [markdown: string]
 }>()
 
-const serverUrl = useLocalStorage('picgo-server-url', 'http://127.0.0.1:36677')
+const defaultPicGoUrl = `http://${window.location.hostname}:36677`
+const serverUrl = useLocalStorage('picgo-server-url', defaultPicGoUrl)
 const fileInput = ref<HTMLInputElement>()
 const isDragging = ref(false)
 const isUploading = ref(false)

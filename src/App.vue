@@ -15,6 +15,7 @@
       @new-file="handleNewFile"
       @toggle-file-sidebar="showSidePanel = !showSidePanel"
       @picgo="showPicGo = true"
+      @local-image="editorRef?.pickAndInsertLocalImage()"
     />
 
     <div class="editor-layout">
