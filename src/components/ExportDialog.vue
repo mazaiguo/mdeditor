@@ -145,11 +145,63 @@ function buildFullHtml(title: string): string {
 <title>${title}</title>
 <style>
 ${styles}
-body { margin: 0; padding: 40px 20px; background: #fff; }
-.preview-pane { max-width: 900px; margin: 0 auto; }
+/* ── Export overrides: reset app layout constraints ── */
+html, body {
+  height: auto !important;
+  min-height: auto !important;
+  overflow: auto !important;
+  position: static !important;
+}
+body {
+  margin: 0 !important;
+  padding: 40px 20px !important;
+  background: #fff !important;
+}
+.app, .editor-layout, .editor-main, .preview-area {
+  display: block !important;
+  height: auto !important;
+  min-height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+  position: static !important;
+  width: auto !important;
+  flex: none !important;
+}
+.preview-pane {
+  display: block !important;
+  height: auto !important;
+  min-height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+  position: static !important;
+  max-width: 900px !important;
+  margin: 0 auto !important;
+  padding: 0 !important;
+}
+/* ── Print: allow full content to flow across pages ── */
 @media print {
-  body { padding: 0; }
-  .preview-pane { max-width: 100%; }
+  html, body {
+    height: auto !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .preview-pane {
+    max-width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  pre, code, .code-block-wrapper {
+    page-break-inside: avoid;
+    white-space: pre-wrap !important;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    page-break-after: avoid;
+  }
 }
 </style>
 </head>
@@ -191,10 +243,20 @@ function exportPdf(title: string) {
   win.document.open()
   win.document.write(html)
   win.document.close()
+  // Wait for fonts, images and any deferred scripts to finish before printing
+  win.addEventListener('load', () => {
+    setTimeout(() => {
+      win.focus()
+      win.print()
+    }, 800)
+  })
+  // Fallback in case load already fired
   setTimeout(() => {
-    win.focus()
-    win.print()
-  }, 600)
+    if (!win.closed) {
+      win.focus()
+      win.print()
+    }
+  }, 2000)
   emit('close')
 }
 
