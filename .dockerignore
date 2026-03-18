@@ -1,0 +1,16 @@
+node_modules
+dist
+dist-ssr
+*.log
+vite.log
+.git
+.gitignore
+README.md
+deploy-to-nas.md
+.vscode
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
