@@ -2,7 +2,7 @@ import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
 import markdownItAnchor from 'markdown-it-anchor'
 import markdownItTaskLists from 'markdown-it-task-lists'
-// @ts-ignore
+// @ts-ignore - no types
 import markdownItMark from 'markdown-it-mark'
 // @ts-ignore
 import markdownItSub from 'markdown-it-sub'
@@ -140,8 +140,6 @@ export function extractHeadings(source: string): Array<{ level: number; text: st
   const headings: Array<{ level: number; text: string; id: string }> = []
   const { body } = parseFrontMatter(source)
   const lines = body.split('\n')
-  const counters: number[] = [0, 0, 0, 0, 0, 0]
-
   for (const line of lines) {
     const match = line.match(/^(#{1,6})\s+(.+)$/)
     if (match) {

@@ -1,4 +1,4 @@
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { computed } from 'vue'
 import { useLocalStorage } from '@vueuse/core'
 import { renderMarkdown, extractHeadings } from '../utils/markdown'
 
