@@ -6,6 +6,18 @@ services:
     ports:
       - "5080:5080"
     volumes:
-      - ./data/images:/app/dist/images
+      - /vol1/1000/mdeditor/images:/app/dist/images
     environment:
       - PORT=5080
+      - TZ=Asia/Shanghai
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
