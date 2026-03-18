@@ -8,7 +8,7 @@ import { createReadStream, statSync } from 'fs'
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
 const DIST_DIR = join(__dirname, 'dist')
 const IMAGES_DIR = join(DIST_DIR, 'images')
-const PORT = process.env.PORT || 3000
+const PORT = process.env.PORT || 5080
 
 const IMAGE_MIME = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',

@@ -4,8 +4,8 @@ services:
     container_name: md-editor
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "5080:5080"
     volumes:
       - ./data/images:/app/dist/images
     environment:
-      - PORT=3000
+      - PORT=5080
