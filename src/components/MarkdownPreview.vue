@@ -39,6 +39,12 @@
       <div class="paste-spinner" />
       Uploading to PicGo...
     </div>
+
+    <!-- Image lightbox -->
+    <div v-if="lightboxSrc" class="img-lightbox" @click="closeLightbox">
+      <div class="lightbox-close">&times;</div>
+      <img :src="lightboxSrc" @click.stop alt="Preview" />
+    </div>
   </Teleport>
 </template>
 
@@ -70,8 +76,15 @@ const ctxMenu = reactive({
   localPath: '' // decoded original local path if applicable
 })
 
+const lightboxSrc = ref('')
+
 function handleClick(e: MouseEvent) {
   const target = e.target as HTMLElement
+  if (target.tagName === 'IMG') {
+    e.preventDefault()
+    lightboxSrc.value = (target as HTMLImageElement).src
+    return
+  }
   if (target.tagName === 'A') {
     const href = (target as HTMLAnchorElement).href
     if (href && !href.startsWith('#')) {
@@ -79,6 +92,10 @@ function handleClick(e: MouseEvent) {
       window.open(href, '_blank')
     }
   }
+}
+
+function closeLightbox() {
+  lightboxSrc.value = ''
 }
 
 function handleContextMenu(e: MouseEvent) {
