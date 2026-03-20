@@ -105,11 +105,15 @@ function getColorForFile(fileName: string, lang: string): string {
   return LANG_COLORS[mappedLang] || LANG_COLORS._default
 }
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
 const md = new MarkdownIt({
   html: true,
   linkify: true,
   typographer: true,
-  highlight(str: string, lang: string, attrs: string) {
+  highlight(str: string, lang: string, attrs: string): string {
     const language = lang || 'plaintext'
     const attrStr = attrs || ''
     const defaultCollapsed = /\b(fold|collapsed)\b/i.test(attrStr)
@@ -131,7 +135,7 @@ const md = new MarkdownIt({
         highlighted = hljs.highlightAuto(str).value
       }
     } catch {
-      highlighted = md.utils.escapeHtml(str)
+      highlighted = escapeHtml(str)
     }
 
     const lines = highlighted.split('\n')
@@ -147,7 +151,7 @@ const md = new MarkdownIt({
 
     const fileColor = fileName ? getColorForFile(fileName, lang) : ''
     const fileNameLabel = fileName
-      ? `<span class="code-file-name" style="color:${fileColor}"><span class="code-file-icon">&#128196;</span>${md.utils.escapeHtml(fileName)}</span>`
+      ? `<span class="code-file-name" style="color:${fileColor}"><span class="code-file-icon">&#128196;</span>${escapeHtml(fileName)}</span>`
       : ''
 
     const langColor = lang ? (LANG_COLORS[lang.toLowerCase()] || LANG_COLORS._default) : ''
@@ -169,7 +173,7 @@ const md = new MarkdownIt({
 
 // Rewrite local file paths in image src to use the dev server proxy
 const defaultImageRenderer = md.renderer.rules.image
-md.renderer.rules.image = (tokens, idx, options, env, self) => {
+md.renderer.rules.image = (tokens: any[], idx: number, options: any, env: any, self: any) => {
   const token = tokens[idx]
   const src = token.attrGet('src') || ''
   // Windows path: C:/... or C:\... or Mac/Linux: /home/...
