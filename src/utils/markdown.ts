@@ -10,16 +10,114 @@ import markdownItSub from 'markdown-it-sub'
 import markdownItSup from 'markdown-it-sup'
 import yaml from 'js-yaml'
 
+const LANG_COLORS: Record<string, string> = {
+  javascript: '#f0db4f',
+  js: '#f0db4f',
+  typescript: '#3178c6',
+  ts: '#3178c6',
+  python: '#3572a5',
+  py: '#3572a5',
+  java: '#b07219',
+  csharp: '#178600',
+  cs: '#178600',
+  cpp: '#f34b7d',
+  'c++': '#f34b7d',
+  c: '#555555',
+  go: '#00add8',
+  rust: '#dea584',
+  ruby: '#cc342d',
+  php: '#4f5d95',
+  swift: '#f05138',
+  kotlin: '#a97bff',
+  dart: '#00b4ab',
+  html: '#e34c26',
+  css: '#563d7c',
+  scss: '#c6538c',
+  less: '#1d365d',
+  vue: '#41b883',
+  jsx: '#61dafb',
+  tsx: '#3178c6',
+  json: '#292929',
+  yaml: '#cb171e',
+  yml: '#cb171e',
+  xml: '#0060ac',
+  sql: '#e38c00',
+  bash: '#89e051',
+  shell: '#89e051',
+  sh: '#89e051',
+  powershell: '#012456',
+  ps1: '#012456',
+  dockerfile: '#384d54',
+  markdown: '#083fa1',
+  md: '#083fa1',
+  lua: '#000080',
+  r: '#198ce7',
+  scala: '#c22d40',
+  perl: '#0298c3',
+  toml: '#9c4221',
+  ini: '#d1dbe0',
+  graphql: '#e10098',
+  nginx: '#009639',
+  _default: 'rgba(255,255,255,0.15)',
+}
+
+const EXT_TO_LANG: Record<string, string> = {
+  js: 'js', mjs: 'js', cjs: 'js',
+  ts: 'ts', mts: 'ts', cts: 'ts',
+  jsx: 'jsx', tsx: 'tsx',
+  py: 'python', pyw: 'python',
+  java: 'java',
+  cs: 'csharp',
+  cpp: 'cpp', cc: 'cpp', cxx: 'cpp', hpp: 'cpp', h: 'c',
+  c: 'c',
+  go: 'go',
+  rs: 'rust',
+  rb: 'ruby',
+  php: 'php',
+  swift: 'swift',
+  kt: 'kotlin', kts: 'kotlin',
+  dart: 'dart',
+  html: 'html', htm: 'html',
+  css: 'css',
+  scss: 'scss', sass: 'scss',
+  less: 'less',
+  vue: 'vue',
+  json: 'json',
+  yaml: 'yaml', yml: 'yaml',
+  xml: 'xml',
+  sql: 'sql',
+  sh: 'bash', bash: 'bash', zsh: 'bash',
+  ps1: 'powershell',
+  md: 'markdown',
+  lua: 'lua',
+  r: 'r',
+  scala: 'scala',
+  pl: 'perl',
+  toml: 'toml',
+  ini: 'ini', cfg: 'ini', conf: 'ini',
+  graphql: 'graphql', gql: 'graphql',
+}
+
+function getColorForFile(fileName: string, lang: string): string {
+  if (lang) return LANG_COLORS[lang.toLowerCase()] || LANG_COLORS._default
+  const ext = fileName.split('.').pop()?.toLowerCase() || ''
+  const mappedLang = EXT_TO_LANG[ext] || ''
+  return LANG_COLORS[mappedLang] || LANG_COLORS._default
+}
+
 const md = new MarkdownIt({
   html: true,
   linkify: true,
   typographer: true,
   highlight(str: string, lang: string, attrs: string) {
     const language = lang || 'plaintext'
-    // Support fold/collapsed keyword to default-collapse the code block
-    const defaultCollapsed = /\b(fold|collapsed)\b/i.test(attrs || '')
+    const attrStr = attrs || ''
+    const defaultCollapsed = /\b(fold|collapsed)\b/i.test(attrStr)
 
-    // Mermaid diagrams: return a special placeholder rendered client-side
+    // Parse title="filename" from attrs
+    const titleMatch = attrStr.match(/title\s*=\s*"([^"]*)"/)
+    const fileName = titleMatch ? titleMatch[1] : ''
+
     if (lang === 'mermaid') {
       const escaped = str.replace(/</g, '&lt;').replace(/>/g, '&gt;')
       return `<div class="mermaid-wrapper"><div class="mermaid">${escaped}</div></div>`
@@ -37,7 +135,6 @@ const md = new MarkdownIt({
     }
 
     const lines = highlighted.split('\n')
-    // Remove all trailing blank lines (empty or whitespace-only)
     while (lines.length > 0 && lines[lines.length - 1].trim() === '') lines.pop()
 
     const lineNumbers = lines
@@ -48,8 +145,14 @@ const md = new MarkdownIt({
       .map(line => `<span class="code-line">${line || '&#8203;'}</span>`)
       .join('')
 
+    const fileColor = fileName ? getColorForFile(fileName, lang) : ''
+    const fileNameLabel = fileName
+      ? `<span class="code-file-name" style="color:${fileColor}"><span class="code-file-icon">&#128196;</span>${md.utils.escapeHtml(fileName)}</span>`
+      : ''
+
+    const langColor = lang ? (LANG_COLORS[lang.toLowerCase()] || LANG_COLORS._default) : ''
     const langLabel = lang
-      ? `<span class="code-lang-label">${lang}</span>`
+      ? `<span class="code-lang-label" style="background:${langColor};border-color:${langColor}">${lang}</span>`
       : ''
 
     const copyBtn = `<button class="copy-btn" title="Copy"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>`
@@ -59,7 +162,8 @@ const md = new MarkdownIt({
     const trafficLights = `<div class="traffic-lights"><span class="dot dot-red"></span><span class="dot dot-yellow"></span><span class="dot dot-green"></span></div>`
 
     const collapsedAttr = defaultCollapsed ? ' data-collapsed="true"' : ''
-    return `<div class="code-block-wrapper"${collapsedAttr}><div class="code-block-header">${trafficLights}${langLabel}${copyBtn}${collapseBtn}</div><div class="code-block-body"><pre class="line-numbers-gutter">${lineNumbers}</pre><pre class="hljs"><code class="language-${language}">${codeLines}</code></pre></div></div>`
+    const headerRight = `<div class="code-header-actions">${langLabel}${copyBtn}${collapseBtn}</div>`
+    return `<div class="code-block-wrapper"${collapsedAttr}><div class="code-block-header">${trafficLights}${fileNameLabel}${headerRight}</div><div class="code-block-body"><pre class="line-numbers-gutter">${lineNumbers}</pre><pre class="hljs"><code class="language-${language}">${codeLines}</code></pre></div></div>`
   },
 })
 
