@@ -97,7 +97,7 @@ const emit = defineEmits<{
   insert: [markdown: string]
 }>()
 
-const defaultPicGoUrl = `http://${window.location.hostname}:36677`
+const defaultPicGoUrl = 'http://127.0.0.1:36677'
 const serverUrl = useLocalStorage('picgo-server-url', defaultPicGoUrl)
 const fileInput = ref<HTMLInputElement>()
 const isDragging = ref(false)
@@ -112,32 +112,37 @@ async function uploadFiles(files: File[]) {
   isUploading.value = true
   errorMsg.value = ''
 
-  try {
-    const formData = new FormData()
-    imageFiles.forEach(f => formData.append('list[]', f))
+  const base = serverUrl.value.replace(/\/$/, '')
+  const fieldNames = ['files', 'list[]']
+  let lastErr = ''
 
-    const res = await fetch(`${serverUrl.value.replace(/\/$/, '')}/upload`, {
-      method: 'POST',
-      body: formData,
-    })
+  for (const fieldName of fieldNames) {
+    try {
+      const formData = new FormData()
+      imageFiles.forEach(f => formData.append(fieldName, f))
 
-    if (!res.ok) throw new Error(`Server error: ${res.status}`)
+      const res = await fetch(`${base}/upload`, {
+        method: 'POST',
+        body: formData,
+      })
 
-    const data = await res.json()
-    if (data.success && data.result) {
-      const newItems = (data.result as string[]).map((url, i) => ({
-        name: imageFiles[i]?.name ?? `image-${i + 1}`,
-        url,
-      }))
-      uploadedUrls.value.push(...newItems)
-    } else {
-      throw new Error(data.message || 'Upload failed')
+      const data = await res.json()
+      if (data.success && data.result?.length) {
+        const newItems = (data.result as string[]).map((url: string, i: number) => ({
+          name: imageFiles[i]?.name ?? `image-${i + 1}`,
+          url,
+        }))
+        uploadedUrls.value.push(...newItems)
+        isUploading.value = false
+        return
+      }
+      lastErr = data.message || 'Upload failed'
+    } catch (err: any) {
+      lastErr = err.message
     }
-  } catch (err: any) {
-    errorMsg.value = `Upload failed: ${err.message}. Make sure PicGo Server is running on ${serverUrl.value}`
-  } finally {
-    isUploading.value = false
   }
+  errorMsg.value = `Upload failed: ${lastErr}. Make sure PicGo Server is running on ${base}`
+  isUploading.value = false
 }
 
 function handleDrop(e: DragEvent) {

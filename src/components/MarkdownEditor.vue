@@ -1,9 +1,11 @@
 <template>
   <div class="editor-pane" :style="{ fontSize: fontSize + 'px' }">
     <div ref="editorContainer" class="cm-editor-container" />
-    <div v-if="isUploadingImage" class="paste-upload-toast">
-      <div class="paste-spinner" />
-      Uploading image to PicGo...
+    <div v-if="isUploadingImage" class="paste-upload-overlay">
+      <div class="paste-upload-card">
+        <div class="paste-spinner" />
+        <span>Uploading image...</span>
+      </div>
     </div>
   </div>
 </template>
@@ -325,8 +327,7 @@ function insertRaw(text: string) {
   editorView.focus()
 }
 
-// PicGo paste upload — default URL uses current hostname so NAS deploys work automatically
-const defaultPicGoUrl = `http://${window.location.hostname}:36677`
+const defaultPicGoUrl = 'http://127.0.0.1:36677'
 const picgoServerUrl = useLocalStorage('picgo-server-url', defaultPicGoUrl)
 const isUploadingImage = ref(false)
 
@@ -345,19 +346,23 @@ function getImageTimestamp(): string {
 }
 
 async function uploadBinaryToPicGo(file: File): Promise<string | null> {
-  const formData = new FormData()
-  formData.append('list[]', file)
-  try {
-    const base = picgoServerUrl.value.replace(/\/$/, '')
-    const res = await fetch(`${base}/upload`, { method: 'POST', body: formData })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const data = await res.json()
-    if (data.success && data.result?.length) return data.result[0] as string
-    throw new Error(data.message || 'No URL returned')
-  } catch (err) {
-    console.error('PicGo binary upload failed:', err)
-    return null
+  const base = picgoServerUrl.value.replace(/\/$/, '')
+  const fieldNames = ['files', 'list[]']
+  for (const fieldName of fieldNames) {
+    try {
+      const formData = new FormData()
+      formData.append(fieldName, file, file.name || 'image.png')
+      const res = await fetch(`${base}/upload`, { method: 'POST', body: formData })
+      const data = await res.json()
+      if (data.success && data.result?.length) return data.result[0] as string
+      if (res.ok) throw new Error(data.message || 'No URL returned')
+    } catch (err) {
+      if (fieldName === fieldNames[fieldNames.length - 1]) {
+        console.error('PicGo binary upload failed:', err)
+      }
+    }
   }
+  return null
 }
 
 async function saveImageLocally(file: File): Promise<string | null> {
