@@ -65,7 +65,7 @@
         </button>
       </div>
 
-      <div v-if="!folderName && files.length === 0" class="side-empty">
+      <div v-if="!folderName && flatNodes.length === 0" class="side-empty">
         <div class="side-empty-icon">
           <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
@@ -81,22 +81,36 @@
           </svg>
           {{ folderName }}
         </div>
-        <div v-if="files.length === 0" class="side-empty-sm">No .md files found</div>
+        <div v-if="flatNodes.length === 0" class="side-empty-sm">No .md files found</div>
         <ul class="file-list">
-          <li
-            v-for="file in files"
-            :key="file.name"
-            class="file-item"
-            :class="{ active: file.name === activeFile }"
-            @click="selectFile(file)"
-            @contextmenu.prevent.stop="showFileCtxMenu(file, $event)"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-            </svg>
-            <span class="file-name">{{ file.name }}</span>
-          </li>
+          <template v-for="node in visibleNodes" :key="node.path">
+            <li v-if="node.kind === 'directory'"
+              class="tree-folder-label"
+              :style="{ paddingLeft: (10 + node.depth * 14) + 'px' }"
+              @click="toggleFolder(node.path)"
+            >
+              <svg class="tree-chevron" :class="{ expanded: expandedDirs.has(node.path) }" xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" class="tree-folder-icon">
+                <path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+              </svg>
+              <span class="tree-name">{{ node.name }}</span>
+            </li>
+            <li v-else
+              class="file-item"
+              :class="{ active: node.name === activeFile }"
+              :style="{ paddingLeft: (10 + node.depth * 14) + 'px' }"
+              @click="selectFileNode(node)"
+              @contextmenu.prevent.stop="showFileCtxMenuNode(node, $event)"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+              <span class="file-name">{{ node.name }}</span>
+            </li>
+          </template>
         </ul>
       </template>
     </div>
@@ -122,11 +136,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed } from 'vue'
 
-interface MdFile {
+interface FileNode {
   name: string
-  handle: FileSystemFileHandle
+  path: string
+  kind: 'file' | 'directory'
+  depth: number
+  parentPath: string
+  handle?: FileSystemFileHandle
 }
 
 defineProps<{
@@ -140,44 +158,105 @@ const emit = defineEmits<{
 }>()
 
 const activeTab = ref<'files' | 'toc'>('files')
-const files = ref<MdFile[]>([])
+const flatNodes = ref<FileNode[]>([])
 const folderName = ref('')
+const expandedDirs = ref(new Set<string>())
 
 const fileCtxMenu = reactive({
   visible: false,
   x: 0,
   y: 0,
-  file: null as MdFile | null,
+  node: null as FileNode | null,
 })
+
+function isMdFile(name: string): boolean {
+  return /\.(md|markdown|txt)$/i.test(name)
+}
+
+async function scanDirectory(dirHandle: FileSystemDirectoryHandle, parentPath: string, depth: number): Promise<FileNode[]> {
+  const result: FileNode[] = []
+  const entries: { name: string; handle: FileSystemHandle }[] = []
+
+  for await (const [name, handle] of dirHandle.entries()) {
+    if (name.startsWith('.') || name === 'node_modules') continue
+    entries.push({ name, handle })
+  }
+
+  const dirEntries = entries.filter(e => e.handle.kind === 'directory').sort((a, b) => a.name.localeCompare(b.name))
+  const fileEntries = entries.filter(e => e.handle.kind === 'file' && isMdFile(e.name)).sort((a, b) => a.name.localeCompare(b.name))
+
+  for (const entry of dirEntries) {
+    const path = parentPath ? `${parentPath}/${entry.name}` : entry.name
+    const children = await scanDirectory(entry.handle as FileSystemDirectoryHandle, path, depth + 1)
+    if (children.length > 0) {
+      result.push({ name: entry.name, path, kind: 'directory', depth, parentPath })
+      result.push(...children)
+    }
+  }
+
+  for (const entry of fileEntries) {
+    const path = parentPath ? `${parentPath}/${entry.name}` : entry.name
+    result.push({ name: entry.name, path, kind: 'file', depth, parentPath, handle: entry.handle as FileSystemFileHandle })
+  }
+
+  return result
+}
+
+const visibleNodes = computed(() => {
+  const result: FileNode[] = []
+  for (const node of flatNodes.value) {
+    if (node.depth === 0) {
+      result.push(node)
+      continue
+    }
+    const parts = node.parentPath.split('/')
+    let checkPath = ''
+    let visible = true
+    for (const part of parts) {
+      checkPath = checkPath ? `${checkPath}/${part}` : part
+      if (!expandedDirs.value.has(checkPath)) {
+        visible = false
+        break
+      }
+    }
+    if (visible) result.push(node)
+  }
+  return result
+})
+
+function toggleFolder(path: string) {
+  if (expandedDirs.value.has(path)) {
+    expandedDirs.value.delete(path)
+  } else {
+    expandedDirs.value.add(path)
+  }
+  expandedDirs.value = new Set(expandedDirs.value)
+}
 
 async function openFolder() {
   try {
     const dirHandle = await (window as any).showDirectoryPicker({ mode: 'read' })
     folderName.value = dirHandle.name
-    files.value = []
-    for await (const [name, handle] of dirHandle.entries()) {
-      if (handle.kind === 'file' && /\.(md|markdown|txt)$/i.test(name)) {
-        files.value.push({ name, handle: handle as FileSystemFileHandle })
-      }
-    }
-    files.value.sort((a, b) => a.name.localeCompare(b.name))
+    expandedDirs.value = new Set()
+    flatNodes.value = await scanDirectory(dirHandle, '', 0)
   } catch (err: any) {
     if (err.name !== 'AbortError') console.error('Failed to open folder:', err)
   }
 }
 
-async function selectFile(file: MdFile) {
+async function selectFileNode(node: FileNode) {
+  if (!node.handle) return
   try {
-    const f = await file.handle.getFile()
+    const f = await node.handle.getFile()
     const content = await f.text()
-    emit('fileContent', content, file.name)
+    emit('fileContent', content, node.name)
   } catch (err) {
     console.error('Failed to read file:', err)
   }
 }
 
-function showFileCtxMenu(file: MdFile, e: MouseEvent) {
-  fileCtxMenu.file = file
+function showFileCtxMenuNode(node: FileNode, e: MouseEvent) {
+  fileCtxMenu.node = node
   fileCtxMenu.x = e.clientX
   fileCtxMenu.y = e.clientY
   fileCtxMenu.visible = true
@@ -188,23 +267,23 @@ function closeCtxMenu() {
 }
 
 function copyFileName() {
-  if (!fileCtxMenu.file) return
-  navigator.clipboard.writeText(fileCtxMenu.file.name)
+  if (!fileCtxMenu.node) return
+  navigator.clipboard.writeText(fileCtxMenu.node.name)
   closeCtxMenu()
 }
 
 function copyFilePath() {
-  if (!fileCtxMenu.file) return
+  if (!fileCtxMenu.node) return
   const path = folderName.value
-    ? `${folderName.value}/${fileCtxMenu.file.name}`
-    : fileCtxMenu.file.name
+    ? `${folderName.value}/${fileCtxMenu.node.path}`
+    : fileCtxMenu.node.path
   navigator.clipboard.writeText(path)
   closeCtxMenu()
 }
 
 async function openFileFromMenu() {
-  if (!fileCtxMenu.file) return
-  await selectFile(fileCtxMenu.file)
+  if (!fileCtxMenu.node) return
+  await selectFileNode(fileCtxMenu.node)
   closeCtxMenu()
 }
 
@@ -214,4 +293,6 @@ function scrollToHeading(id: string) {
   const target = previewEl.querySelector(`[id="${id}"]`)
   if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
+
+defineExpose({ openFolder })
 </script>

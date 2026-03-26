@@ -12,6 +12,7 @@
       @toggle-theme="toggleTheme"
       @export="showExport = true"
       @open-file="fileInputRef?.click()"
+      @open-folder="handleOpenFolder"
       @new-file="handleNewFile"
       @toggle-file-sidebar="showSidePanel = !showSidePanel"
       @picgo="showPicGo = true"
@@ -19,15 +20,14 @@
     />
 
     <div class="editor-layout">
-      <Transition name="toc-slide">
-        <SidePanel
-          v-if="showSidePanel"
-          :active-file="activeFileName"
-          :headings="headings"
-          @file-content="handleFileContent"
-          @new-file="handleNewFile"
-        />
-      </Transition>
+      <SidePanel
+        v-show="showSidePanel"
+        ref="sidePanelRef"
+        :active-file="activeFileName"
+        :headings="headings"
+        @file-content="handleFileContent"
+        @new-file="handleNewFile"
+      />
 
       <div class="editor-main">
         <div v-if="viewMode !== 'preview'" class="editor-area">
@@ -95,7 +95,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import EditorToolbar from './components/EditorToolbar.vue'
 import MarkdownEditor from './components/MarkdownEditor.vue'
 import MarkdownPreview from './components/MarkdownPreview.vue'
@@ -120,6 +120,7 @@ const {
 } = useEditor()
 
 const editorRef = ref<InstanceType<typeof MarkdownEditor>>()
+const sidePanelRef = ref<InstanceType<typeof SidePanel>>()
 const fileInputRef = ref<HTMLInputElement>()
 const showExport = ref(false)
 const showSidePanel = ref(false)
@@ -158,6 +159,11 @@ function handleNewFile() {
   activeFileName.value = ''
 }
 
+function handleOpenFolder() {
+  showSidePanel.value = true
+  sidePanelRef.value?.openFolder()
+}
+
 function handleFileContent(fileContent: string, filename: string) {
   content.value = fileContent
   activeFileName.value = filename
@@ -175,6 +181,16 @@ function handleReplaceImage(oldPath: string, newUrl: string) {
 function escapeRegExp(str: string) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
+
+function handleGlobalKeydown(e: KeyboardEvent) {
+  if (e.ctrlKey && e.shiftKey && (e.key === 'O' || e.key === 'o' || e.code === 'KeyO')) {
+    e.preventDefault()
+    handleOpenFolder()
+  }
+}
+
+onMounted(() => window.addEventListener('keydown', handleGlobalKeydown))
+onUnmounted(() => window.removeEventListener('keydown', handleGlobalKeydown))
 
 function startDrag(e: MouseEvent) {
   isDragging = true
