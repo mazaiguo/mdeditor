@@ -19,3 +19,22 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower-mdeditor
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - TZ=Asia/Shanghai
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_SCHEDULE=0 0 3 * * 1
+      - WATCHTOWER_LABEL_ENABLE=true
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
