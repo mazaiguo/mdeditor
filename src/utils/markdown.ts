@@ -138,8 +138,26 @@ const md = new MarkdownIt({
       highlighted = escapeHtml(str)
     }
 
-    const lines = highlighted.split('\n')
-    while (lines.length > 0 && lines[lines.length - 1].trim() === '') lines.pop()
+    const rawLines = highlighted.split('\n')
+    while (rawLines.length > 0 && rawLines[rawLines.length - 1].trim() === '') rawLines.pop()
+
+    // Re-close/re-open spans that cross line boundaries so each line is valid HTML
+    const lines: string[] = []
+    let openTags: string[] = []
+    for (const raw of rawLines) {
+      let line = openTags.join('') + raw
+      const opens = (line.match(/<span [^>]*>/g) || [])
+      const closes = (line.match(/<\/span>/g) || [])
+      const unclosed = opens.length - closes.length
+      if (unclosed > 0) {
+        const tags = line.match(/<span [^>]*>/g) || []
+        openTags = tags.slice(tags.length - unclosed)
+        line += '</span>'.repeat(unclosed)
+      } else {
+        openTags = []
+      }
+      lines.push(line)
+    }
 
     const lineNumbers = lines
       .map((_, i) => `<span class="line-num">${i + 1}</span>`)
