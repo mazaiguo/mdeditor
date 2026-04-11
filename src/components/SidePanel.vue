@@ -128,7 +128,7 @@
           :class="`toc-level-${heading.level}`"
           @click="scrollToHeading(heading.id)"
         >
-          <span class="toc-item-text">{{ heading.text }}</span>
+          <span class="toc-item-text" v-html="heading.html"></span>
         </li>
       </ul>
     </div>
@@ -149,7 +149,7 @@ interface FileNode {
 
 defineProps<{
   activeFile?: string
-  headings: Array<{ level: number; text: string; id: string }>
+  headings: Array<{ level: number; text: string; html: string; id: string }>
 }>()
 
 const emit = defineEmits<{
@@ -288,9 +288,7 @@ async function openFileFromMenu() {
 }
 
 function scrollToHeading(id: string) {
-  const previewEl = document.querySelector('.preview-pane')
-  if (!previewEl) return
-  const target = previewEl.querySelector(`[id="${id}"]`)
+  const target = document.getElementById(id)
   if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 

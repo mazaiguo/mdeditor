@@ -1248,6 +1248,8 @@ body {
 .toc-level-3 .toc-item-text { padding-left: 36px; font-size: 11.5px; }
 .toc-level-4 .toc-item-text { padding-left: 48px; font-size: 11px; }
 
+.toc-item-text .header-anchor { display: none; }
+
 .toc-content::-webkit-scrollbar {
   width: 4px;
 }

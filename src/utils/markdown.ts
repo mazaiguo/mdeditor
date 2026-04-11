@@ -262,20 +262,26 @@ export function renderMarkdown(source: string): string {
   return fmHtml + md.render(body)
 }
 
-export function extractHeadings(source: string): Array<{ level: number; text: string; id: string }> {
-  const headings: Array<{ level: number; text: string; id: string }> = []
+export function extractHeadings(source: string): Array<{ level: number; text: string; html: string; id: string }> {
   const { body } = parseFrontMatter(source)
-  const lines = body.split('\n')
-  for (const line of lines) {
-    const match = line.match(/^(#{1,6})\s+(.+)$/)
-    if (match) {
-      const level = match[1].length
-      const text = match[2].trim()
-      const id = text
-        .toLowerCase()
-        .replace(/[^\w\u4e00-\u9fff\s-]/g, '')
-        .replace(/\s+/g, '-')
-      headings.push({ level, text, id })
+  const headings: Array<{ level: number; text: string; html: string; id: string }> = []
+  const tokens = md.parse(body, {})
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]
+    if (token.type === 'heading_open') {
+      const level = Number(token.tag.slice(1))
+      const id = token.attrGet('id') || ''
+      const inlineToken = tokens[i + 1]
+      const text = inlineToken?.children
+        ?.filter((t: any) => ['text', 'code_inline'].includes(t.type))
+        .map((t: any) => t.content)
+        .join('') || inlineToken?.content || ''
+      const filteredChildren = (inlineToken?.children || []).filter(
+        (t: any) => !(t.type === 'html_inline' && t.content.includes('header-anchor'))
+      )
+      const rawHtml = inlineToken ? md.renderer.renderInline(filteredChildren, md.options, {}) : ''
+      const html = rawHtml.replace(/<a[^>]*class="header-anchor"[^>]*>[\s\S]*?<\/a>\s*/g, '')
+      headings.push({ level, text, html, id })
     }
   }
   return headings
