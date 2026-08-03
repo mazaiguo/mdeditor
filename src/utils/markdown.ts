@@ -214,10 +214,6 @@ md.use(markdownItAnchor, {
   // token stream equals the id that survives sanitization (TOC links work).
   slugify: (s: string) =>
     'user-content-' + encodeURIComponent(String(s).trim().toLowerCase().replace(/\s+/g, '-')),
-  permalink: markdownItAnchor.permalink.ariaHidden({
-    placement: 'before',
-    symbol: '#',
-  }),
 })
 
 md.use(markdownItTaskLists, { enabled: true, label: true })
@@ -283,8 +279,10 @@ export interface Heading {
 /**
  * Parse the document once and derive both the sanitized HTML and the heading
  * list from the same token stream (avoids parsing twice per keystroke).
+ * autoNumber is false when the headings already carry manual numbering
+ * (e.g. "1. Intro", "1.1 Scope"), so the preview skips CSS counter numbers.
  */
-export function parseDocument(source: string): { html: string; headings: Heading[] } {
+export function parseDocument(source: string): { html: string; headings: Heading[]; autoNumber: boolean } {
   const { meta, body } = parseFrontMatter(source)
   const fmHtml = meta ? renderFrontMatter(meta) : ''
 
@@ -302,17 +300,18 @@ export function parseDocument(source: string): { html: string; headings: Heading
         ?.filter((t: any) => ['text', 'code_inline'].includes(t.type))
         .map((t: any) => t.content)
         .join('') || inlineToken?.content || '').trim()
-      const filteredChildren = (inlineToken?.children || []).filter(
-        (t: any) => !(t.type === 'html_inline' && t.content.includes('header-anchor'))
-      )
-      const rawHtml = inlineToken ? md.renderer.renderInline(filteredChildren, md.options, {}) : ''
       const headingHtml = sanitizeHtml(
-        rawHtml.replace(/<a[^>]*class="header-anchor"[^>]*>[\s\S]*?<\/a>\s*/g, '')
+        inlineToken ? md.renderer.renderInline(inlineToken.children || [], md.options, {}) : ''
       )
       headings.push({ level, text, html: headingHtml, id })
     }
   }
-  return { html, headings }
+
+  const MANUAL_NUMBER_RE = /^\d+(\.\d+)*[.、．]/
+  const numbered = headings.filter(h => MANUAL_NUMBER_RE.test(h.text)).length
+  const autoNumber = !(numbered > 0 && numbered >= headings.length / 2)
+
+  return { html, headings, autoNumber }
 }
 
 export function renderMarkdown(source: string): string {

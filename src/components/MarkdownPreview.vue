@@ -2,7 +2,7 @@
   <div
     ref="previewRoot"
     class="preview-pane"
-    :class="`theme-${theme}`"
+    :class="[`theme-${theme}`, { 'no-auto-number': !autoNumber }]"
     :style="{ fontSize: fontSize + 'px' }"
     v-html="html"
     @click="handleClick"
@@ -55,11 +55,14 @@ import { useLocalStorage } from '@vueuse/core'
 import type Mermaid from 'mermaid'
 import { uploadPathToPicGo } from '../utils/picgo'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   html: string
   theme: 'light' | 'dark'
   fontSize: number
-}>()
+  autoNumber?: boolean
+}>(), {
+  autoNumber: true,
+})
 
 const emit = defineEmits<{
   'replace-image': [oldPath: string, newUrl: string]

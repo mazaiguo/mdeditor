@@ -42,7 +42,6 @@ describe('renderMarkdown', () => {
   it('renders headings with anchor ids', () => {
     const html = renderMarkdown('# Title\n\n## Sub')
     expect(html).toContain('id="user-content-title"')
-    expect(html).toContain('href="#user-content-title"')
     expect(html).toContain('<h2')
   })
 
@@ -71,6 +70,21 @@ describe('extractHeadings / parseDocument', () => {
     const { html, headings } = parseDocument('# Hi\n\nhello')
     expect(html).toContain('Hi')
     expect(headings).toHaveLength(1)
+  })
+
+  it('keeps auto numbering when headings are unnumbered', () => {
+    const { autoNumber } = parseDocument('# Intro\n\n## Scope\n\n## Goals')
+    expect(autoNumber).toBe(true)
+  })
+
+  it('disables auto numbering when headings carry manual numbers', () => {
+    const { autoNumber } = parseDocument('# 1. Intro\n\n## 1.1 Scope\n\n## 1.2 Goals')
+    expect(autoNumber).toBe(false)
+  })
+
+  it('does not treat year-like headings as manual numbering', () => {
+    const { autoNumber } = parseDocument('# 2024 年总结\n\n## 回顾')
+    expect(autoNumber).toBe(true)
   })
 })
 
