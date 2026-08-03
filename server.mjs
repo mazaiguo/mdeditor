@@ -1,49 +1,25 @@
 import { createServer } from 'http'
 import { readFile, writeFile, mkdir } from 'fs/promises'
-import { existsSync } from 'fs'
-import { join, extname, resolve } from 'path'
+import { existsSync, statSync } from 'fs'
+import { join, extname, resolve, sep } from 'path'
 import { fileURLToPath } from 'url'
-import { createReadStream, statSync } from 'fs'
+import {
+  IMAGE_MIME,
+  MIME_TYPES,
+  ALLOWED_IMAGE_EXTS,
+  MAX_IMAGE_SIZE,
+  getImageTimestamp,
+} from './server-shared.mjs'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
 const DIST_DIR = join(__dirname, 'dist')
 const IMAGES_DIR = join(DIST_DIR, 'images')
 const PORT = process.env.PORT || 5080
 
-const IMAGE_MIME = {
-  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
-  gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml',
-}
-
-const MIME_TYPES = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'application/javascript',
-  '.css': 'text/css',
-  '.json': 'application/json',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
-  '.woff': 'font/woff',
-  '.woff2': 'font/woff2',
-}
-
-function getImageTimestamp() {
-  const now = new Date()
-  const pad = (n, len = 2) => String(n).padStart(len, '0')
-  return (
-    now.getFullYear() +
-    pad(now.getMonth() + 1) +
-    pad(now.getDate()) +
-    pad(now.getHours()) +
-    pad(now.getMinutes()) +
-    pad(now.getSeconds()) +
-    pad(now.getMilliseconds(), 3)
-  )
-}
+// Optional security restriction: when IMAGE_ROOT is set, /api/local-image may
+// only serve files inside this directory. Unset keeps backwards compatibility
+// (any readable image path), which is convenient for local single-user usage.
+const IMAGE_ROOT = process.env.IMAGE_ROOT ? resolve(process.env.IMAGE_ROOT) : ''
 
 async function serveStatic(req, res, urlPath) {
   let filePath = join(DIST_DIR, urlPath === '/' ? 'index.html' : urlPath)
@@ -72,11 +48,31 @@ async function handleSaveImage(req, res) {
     res.end('Method Not Allowed')
     return
   }
-  const ext = (req.headers['x-image-ext']) || 'png'
+  const ext = String(req.headers['x-image-ext'] || 'png').toLowerCase()
+  // Validate extension against the whitelist to prevent arbitrary file writes
+  if (!ALLOWED_IMAGE_EXTS.includes(ext)) {
+    res.writeHead(400, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ success: false, error: `Extension not allowed: ${ext}` }))
+    return
+  }
   const filename = `image-${getImageTimestamp()}.${ext}`
   const chunks = []
-  req.on('data', chunk => chunks.push(chunk))
+  let received = 0
+  let aborted = false
+  req.on('data', chunk => {
+    if (aborted) return
+    received += chunk.length
+    if (received > MAX_IMAGE_SIZE) {
+      aborted = true
+      res.writeHead(413, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ success: false, error: 'Image too large (max 20MB)' }))
+      req.destroy()
+      return
+    }
+    chunks.push(chunk)
+  })
   req.on('end', async () => {
+    if (aborted) return
     try {
       if (!existsSync(IMAGES_DIR)) await mkdir(IMAGES_DIR, { recursive: true })
       await writeFile(join(IMAGES_DIR, filename), Buffer.concat(chunks))
@@ -87,6 +83,12 @@ async function handleSaveImage(req, res) {
       res.end(JSON.stringify({ success: false, error: String(err) }))
     }
   })
+}
+
+function isInsideImageRoot(filePath) {
+  if (!IMAGE_ROOT) return true
+  const safe = resolve(filePath)
+  return safe === IMAGE_ROOT || safe.startsWith(IMAGE_ROOT + sep)
 }
 
 async function handleLocalImage(req, res) {
@@ -100,6 +102,11 @@ async function handleLocalImage(req, res) {
       return
     }
     const normalized = filePath.replace(/\\/g, '/')
+    if (!isInsideImageRoot(normalized)) {
+      res.writeHead(403)
+      res.end('Path outside IMAGE_ROOT')
+      return
+    }
     const safe = resolve(normalized)
     const data = await readFile(safe)
     res.writeHead(200, {
@@ -126,4 +133,5 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`MD Editor server running at http://0.0.0.0:${PORT}`)
+  if (IMAGE_ROOT) console.log(`Local images restricted to: ${IMAGE_ROOT}`)
 })

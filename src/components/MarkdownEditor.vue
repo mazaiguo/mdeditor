@@ -22,6 +22,8 @@ import { oneDark } from '@codemirror/theme-one-dark'
 import { syntaxHighlighting, defaultHighlightStyle, bracketMatching, foldGutter, foldKeymap, HighlightStyle } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search'
+import { uploadFileToPicGo, uploadPathToPicGo } from '../utils/picgo'
+import { getImageTimestamp, fileToDataUrl } from '../utils/image'
 
 const props = defineProps<{
   modelValue: string
@@ -331,40 +333,6 @@ const defaultPicGoUrl = 'http://127.0.0.1:36677'
 const picgoServerUrl = useLocalStorage('picgo-server-url', defaultPicGoUrl)
 const isUploadingImage = ref(false)
 
-function getImageTimestamp(): string {
-  const now = new Date()
-  const pad = (n: number, len = 2) => String(n).padStart(len, '0')
-  return (
-    now.getFullYear().toString() +
-    pad(now.getMonth() + 1) +
-    pad(now.getDate()) +
-    pad(now.getHours()) +
-    pad(now.getMinutes()) +
-    pad(now.getSeconds()) +
-    pad(now.getMilliseconds(), 3)
-  )
-}
-
-async function uploadBinaryToPicGo(file: File): Promise<string | null> {
-  const base = picgoServerUrl.value.replace(/\/$/, '')
-  const fieldNames = ['files', 'list[]']
-  for (const fieldName of fieldNames) {
-    try {
-      const formData = new FormData()
-      formData.append(fieldName, file, file.name || 'image.png')
-      const res = await fetch(`${base}/upload`, { method: 'POST', body: formData })
-      const data = await res.json()
-      if (data.success && data.result?.length) return data.result[0] as string
-      if (res.ok) throw new Error(data.message || 'No URL returned')
-    } catch (err) {
-      if (fieldName === fieldNames[fieldNames.length - 1]) {
-        console.error('PicGo binary upload failed:', err)
-      }
-    }
-  }
-  return null
-}
-
 async function saveImageLocally(file: File): Promise<string | null> {
   const ext = file.type.split('/')[1]?.replace('jpeg', 'jpg') || 'png'
   try {
@@ -383,35 +351,8 @@ async function saveImageLocally(file: File): Promise<string | null> {
   }
 }
 
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
-}
-
-async function uploadPathToPicGo(filePath: string): Promise<string | null> {
-  try {
-    const base = picgoServerUrl.value.replace(/\/$/, '')
-    const res = await fetch(`${base}/upload`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ list: [filePath] }),
-    })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const data = await res.json()
-    if (data.success && data.result?.length) return data.result[0] as string
-    throw new Error(data.message || 'No URL returned')
-  } catch (err) {
-    console.error('PicGo path upload failed:', err)
-    return null
-  }
-}
-
 // Local Windows/Mac image path pattern: ![alt](C:\...\file.ext) or ![alt](/home/...ext)
-const LOCAL_IMG_RE = /!\[([^\]]*)\]\(([a-zA-Z]:[^\)]+\.(?:png|jpe?g|gif|webp|bmp|svg)|\/(?:[^\)]+)\.(?:png|jpe?g|gif|webp|bmp|svg))\)/gi
+const LOCAL_IMG_RE = /!\[([^\]]*)\]\(([a-zA-Z]:[^)]+\.(?:png|jpe?g|gif|webp|bmp|svg)|\/(?:[^)]+)\.(?:png|jpe?g|gif|webp|bmp|svg))\)/gi
 
 async function replaceLocalImgPaths(text: string): Promise<{ result: string; replaced: boolean }> {
   const matches = [...text.matchAll(LOCAL_IMG_RE)]
@@ -420,7 +361,7 @@ async function replaceLocalImgPaths(text: string): Promise<{ result: string; rep
   let result = text
   for (const match of matches) {
     const [fullMatch, altText, localPath] = match
-    const url = await uploadPathToPicGo(localPath)
+    const url = await uploadPathToPicGo(picgoServerUrl.value, localPath)
     if (url) {
       result = result.replace(fullMatch, `![${altText || `image-${getImageTimestamp()}`}](${url})`)
     }
@@ -439,7 +380,7 @@ function handlePasteImage(e: ClipboardEvent) {
       const file = item.getAsFile()
       if (!file) continue
       isUploadingImage.value = true
-      uploadBinaryToPicGo(file).then(async (url) => {
+      uploadFileToPicGo(picgoServerUrl.value, file).then(async (url) => {
         if (url) {
           isUploadingImage.value = false
           insertRaw(`![image-${getImageTimestamp()}](${url})`)
@@ -486,7 +427,7 @@ async function pickAndInsertLocalImage() {
     isUploadingImage.value = true
 
     // Try PicGo first
-    const url = await uploadBinaryToPicGo(file)
+    const url = await uploadFileToPicGo(picgoServerUrl.value, file)
     if (url) {
       isUploadingImage.value = false
       insertRaw(`![${alt}](${url})`)

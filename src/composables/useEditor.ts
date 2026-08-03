@@ -1,6 +1,6 @@
-import { computed } from 'vue'
-import { useLocalStorage } from '@vueuse/core'
-import { renderMarkdown, extractHeadings } from '../utils/markdown'
+import { computed, ref, watch } from 'vue'
+import { useLocalStorage, useDebounceFn } from '@vueuse/core'
+import { parseDocument } from '../utils/markdown'
 
 const DEFAULT_CONTENT = `# Welcome to MD Editor
 
@@ -86,26 +86,57 @@ Start editing and enjoy your writing experience!
 export type ViewMode = 'edit' | 'split' | 'preview'
 export type Theme = 'light' | 'dark'
 
+const CONTENT_KEY = 'md-editor-content'
+
+/** Count CJK characters plus English words, ignoring code blocks and markup. */
+export function countWords(source: string): number {
+  const text = source.replace(/```[\s\S]*?```/g, '').replace(/[\]#*`_~[()>-]/g, '')
+  const chinese = (text.match(/[\u4e00-\u9fff]/g) || []).length
+  const english = (text.match(/\b[a-zA-Z]+\b/g) || []).length
+  return chinese + english
+}
+
+function loadContent(): string {
+  try {
+    return localStorage.getItem(CONTENT_KEY) ?? DEFAULT_CONTENT
+  } catch {
+    return DEFAULT_CONTENT
+  }
+}
+
 export function useEditor() {
-  const content = useLocalStorage('md-editor-content', DEFAULT_CONTENT)
+  // Content is persisted manually (instead of useLocalStorage) so we can
+  // detect quota errors: base64 images can easily exceed the ~5MB limit.
+  const content = ref(loadContent())
+  const storageQuotaExceeded = ref(false)
+
+  const persistContent = useDebounceFn(() => {
+    try {
+      localStorage.setItem(CONTENT_KEY, content.value)
+      storageQuotaExceeded.value = false
+    } catch {
+      storageQuotaExceeded.value = true
+    }
+  }, 500)
+
+  watch(content, persistContent)
+
   const viewMode = useLocalStorage<ViewMode>('md-editor-mode', 'split')
   const theme = useLocalStorage<Theme>('md-editor-theme', 'light')
   const fontSize = useLocalStorage('md-editor-fontsize', 15)
-  const showToc = useLocalStorage('md-editor-toc', true)
   const wordWrap = useLocalStorage('md-editor-wrap', true)
 
-  const wordCount = computed(() => {
-    const text = content.value.replace(/```[\s\S]*?```/g, '').replace(/[#*`_~\[\]()>-]/g, '')
-    const chinese = (text.match(/[\u4e00-\u9fff]/g) || []).length
-    const english = (text.match(/\b[a-zA-Z]+\b/g) || []).length
-    return chinese + english
-  })
+  const wordCount = computed(() => countWords(content.value))
 
   const lineCount = computed(() => content.value.split('\n').length)
 
-  const renderedHtml = computed(() => renderMarkdown(content.value))
+  // Debounced single-pass parse: HTML + headings share one token stream
+  const debouncedContent = ref(content.value)
+  watch(content, useDebounceFn((value: string) => { debouncedContent.value = value }, 200))
 
-  const headings = computed(() => extractHeadings(content.value))
+  const parsed = computed(() => parseDocument(debouncedContent.value))
+  const renderedHtml = computed(() => parsed.value.html)
+  const headings = computed(() => parsed.value.headings)
 
   function toggleTheme() {
     theme.value = theme.value === 'light' ? 'dark' : 'light'
@@ -149,12 +180,12 @@ export function useEditor() {
     viewMode,
     theme,
     fontSize,
-    showToc,
     wordWrap,
     wordCount,
     lineCount,
     renderedHtml,
     headings,
+    storageQuotaExceeded,
     toggleTheme,
     setViewMode,
     toolbarActions,

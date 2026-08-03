@@ -125,7 +125,7 @@
           v-for="(heading, idx) in headings"
           :key="idx"
           class="toc-item"
-          :class="`toc-level-${heading.level}`"
+          :class="[`toc-level-${heading.level}`, { active: heading.id === activeHeadingId }]"
           @click="scrollToHeading(heading.id)"
         >
           <span class="toc-item-text" v-html="heading.html"></span>
@@ -150,10 +150,11 @@ interface FileNode {
 defineProps<{
   activeFile?: string
   headings: Array<{ level: number; text: string; html: string; id: string }>
+  activeHeadingId?: string
 }>()
 
 const emit = defineEmits<{
-  fileContent: [content: string, filename: string]
+  fileContent: [content: string, filename: string, handle: FileSystemFileHandle | null]
   newFile: []
 }>()
 
@@ -235,7 +236,7 @@ function toggleFolder(path: string) {
 
 async function openFolder() {
   try {
-    const dirHandle = await (window as any).showDirectoryPicker({ mode: 'read' })
+    const dirHandle = await (window as any).showDirectoryPicker({ mode: 'readwrite' })
     folderName.value = dirHandle.name
     expandedDirs.value = new Set()
     flatNodes.value = await scanDirectory(dirHandle, '', 0)
@@ -249,7 +250,7 @@ async function selectFileNode(node: FileNode) {
   try {
     const f = await node.handle.getFile()
     const content = await f.text()
-    emit('fileContent', content, node.name)
+    emit('fileContent', content, node.name, node.handle)
   } catch (err) {
     console.error('Failed to read file:', err)
   }

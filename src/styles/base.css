@@ -1,0 +1,117 @@
+/* ===== Reset & Base ===== */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, Monaco, Consolas, monospace;
+
+  /* Light theme */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f5f7;
+  --bg-tertiary: #e8e8ed;
+  --bg-elevated: #ffffff;
+  --border-color: #d2d2d7;
+  --border-subtle: #e5e5e7;
+  --text-primary: #1d1d1f;
+  --text-secondary: #6e6e73;
+  --text-tertiary: #aeaeb2;
+  --accent: #0066cc;
+  --accent-hover: #0052a3;
+  --accent-light: rgba(0, 102, 204, 0.1);
+
+  /* Code block Apple style */
+  --code-bg: #1d1d1f;
+  --code-header-bg: #2d2d2f;
+  --code-border: rgba(255, 255, 255, 0.08);
+  --code-text: #e8e8ed;
+  --dot-red: #ff5f57;
+  --dot-yellow: #ffbd2e;
+  --dot-green: #28c840;
+
+  /* Toolbar */
+  --toolbar-bg: #f5f5f7;
+  --toolbar-border: #d2d2d7;
+  --toolbar-btn-hover: rgba(0, 0, 0, 0.06);
+  --toolbar-btn-active: rgba(0, 102, 204, 0.12);
+
+  /* Statusbar */
+  --statusbar-bg: #f0f0f2;
+  --statusbar-text: #6e6e73;
+
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.12);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.16);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-xs: 4px;
+}
+
+.theme-dark {
+  --bg-primary: #1c1c1e;
+  --bg-secondary: #2c2c2e;
+  --bg-tertiary: #3a3a3c;
+  --bg-elevated: #2c2c2e;
+  --border-color: #3a3a3c;
+  --border-subtle: #2c2c2e;
+  --text-primary: #f2f2f7;
+  --text-secondary: #aeaeb2;
+  --text-tertiary: #636366;
+  --accent: #4facfe;
+  --accent-hover: #6fbbfe;
+  --accent-light: rgba(79, 172, 254, 0.12);
+
+  --code-bg: #000000;
+  --code-header-bg: #1a1a1a;
+  --code-border: rgba(255, 255, 255, 0.1);
+
+  --toolbar-bg: #2c2c2e;
+  --toolbar-border: #3a3a3c;
+  --toolbar-btn-hover: rgba(255, 255, 255, 0.08);
+  --toolbar-btn-active: rgba(79, 172, 254, 0.15);
+
+  --statusbar-bg: #252527;
+  --statusbar-text: #aeaeb2;
+
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.4);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.5);
+}
+
+html, body, #app {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ===== App Layout ===== */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background 0.2s, color 0.2s;
+}
+
+/* ===== Scrollbars ===== */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
+}
+
+/* ===== Selection ===== */
+::selection {
+  background: var(--accent-light);
+  color: inherit;
+}

@@ -1,21 +1,24 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { writeFile, mkdir, readFile } from 'fs/promises'
-import { join, extname } from 'path'
+import { join, extname, resolve, sep } from 'path'
 import { existsSync } from 'fs'
+// @ts-ignore - plain ESM module shared with server.mjs
+import {
+  IMAGE_MIME,
+  ALLOWED_IMAGE_EXTS,
+  MAX_IMAGE_SIZE,
+  getImageTimestamp,
+} from './server-shared.mjs'
 
-function getImageTimestamp(): string {
-  const now = new Date()
-  const pad = (n: number, len = 2) => String(n).padStart(len, '0')
-  return (
-    now.getFullYear().toString() +
-    pad(now.getMonth() + 1) +
-    pad(now.getDate()) +
-    pad(now.getHours()) +
-    pad(now.getMinutes()) +
-    pad(now.getSeconds()) +
-    pad(now.getMilliseconds(), 3)
-  )
+// Optional: restrict /api/local-image to a single directory (same as server.mjs)
+const IMAGE_ROOT = process.env.IMAGE_ROOT ? resolve(process.env.IMAGE_ROOT) : ''
+const imageMime = IMAGE_MIME as Record<string, string>
+
+function isInsideImageRoot(filePath: string): boolean {
+  if (!IMAGE_ROOT) return true
+  const safe = resolve(filePath)
+  return safe === IMAGE_ROOT || safe.startsWith(IMAGE_ROOT + sep)
 }
 
 export default defineConfig({
@@ -24,26 +27,26 @@ export default defineConfig({
     {
       name: 'local-image-server',
       configureServer(server) {
-        const IMAGE_MIME: Record<string, string> = {
-          png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
-          gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml',
-        }
-
         // Serve local file paths (for preview of local images)
         server.middlewares.use('/api/local-image', async (req, res) => {
           try {
             const url = new URL(req.url!, 'http://localhost')
             const filePath = url.searchParams.get('path') ?? ''
             const ext = extname(filePath).slice(1).toLowerCase()
-            if (!filePath || !IMAGE_MIME[ext]) {
+            if (!filePath || !imageMime[ext]) {
               res.statusCode = 400
               res.end('Invalid path or extension')
               return
             }
             // Normalize Windows-style backslashes
             const normalized = filePath.replace(/\\/g, '/')
-            const data = await readFile(normalized)
-            res.setHeader('Content-Type', IMAGE_MIME[ext])
+            if (!isInsideImageRoot(normalized)) {
+              res.statusCode = 403
+              res.end('Path outside IMAGE_ROOT')
+              return
+            }
+            const data = await readFile(resolve(normalized))
+            res.setHeader('Content-Type', imageMime[ext])
             res.setHeader('Cache-Control', 'public, max-age=3600')
             res.setHeader('Access-Control-Allow-Origin', '*')
             res.end(data)
@@ -60,13 +63,36 @@ export default defineConfig({
             return
           }
 
-          const ext = (req.headers['x-image-ext'] as string) || 'png'
+          const ext = String(req.headers['x-image-ext'] || 'png').toLowerCase()
+          // Validate extension against the whitelist to prevent arbitrary file writes
+          if (!ALLOWED_IMAGE_EXTS.includes(ext)) {
+            res.statusCode = 400
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ success: false, error: `Extension not allowed: ${ext}` }))
+            return
+          }
+
           const filename = `image-${getImageTimestamp()}.${ext}`
           const imagesDir = join(process.cwd(), 'public', 'images')
 
           const chunks: Buffer[] = []
-          req.on('data', (chunk: Buffer) => chunks.push(chunk))
+          let received = 0
+          let aborted = false
+          req.on('data', (chunk: Buffer) => {
+            if (aborted) return
+            received += chunk.length
+            if (received > MAX_IMAGE_SIZE) {
+              aborted = true
+              res.statusCode = 413
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ success: false, error: 'Image too large (max 20MB)' }))
+              req.destroy()
+              return
+            }
+            chunks.push(chunk)
+          })
           req.on('end', async () => {
+            if (aborted) return
             try {
               if (!existsSync(imagesDir)) {
                 await mkdir(imagesDir, { recursive: true })
@@ -85,4 +111,23 @@ export default defineConfig({
       },
     },
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        // Split heavy third-party dependencies into separate chunks
+        manualChunks(id: string) {
+          if (!id.includes('node_modules')) return undefined
+          if (id.includes('@codemirror') || id.includes('@lezer') || id.includes('/codemirror/')) {
+            return 'vendor-codemirror'
+          }
+          if (id.includes('highlight.js')) return 'vendor-highlight'
+          if (id.includes('markdown-it') || id.includes('linkify') || id.includes('js-yaml')) {
+            return 'vendor-markdown'
+          }
+          if (id.includes('mermaid')) return 'vendor-mermaid'
+          return undefined
+        },
+      },
+    },
+  },
 })

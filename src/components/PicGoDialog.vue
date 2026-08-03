@@ -89,6 +89,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useLocalStorage } from '@vueuse/core'
+import { uploadFilesToPicGo } from '../utils/picgo'
 
 defineProps<{ visible: boolean }>()
 
@@ -112,36 +113,17 @@ async function uploadFiles(files: File[]) {
   isUploading.value = true
   errorMsg.value = ''
 
-  const base = serverUrl.value.replace(/\/$/, '')
-  const fieldNames = ['files', 'list[]']
-  let lastErr = ''
-
-  for (const fieldName of fieldNames) {
-    try {
-      const formData = new FormData()
-      imageFiles.forEach(f => formData.append(fieldName, f))
-
-      const res = await fetch(`${base}/upload`, {
-        method: 'POST',
-        body: formData,
-      })
-
-      const data = await res.json()
-      if (data.success && data.result?.length) {
-        const newItems = (data.result as string[]).map((url: string, i: number) => ({
-          name: imageFiles[i]?.name ?? `image-${i + 1}`,
-          url,
-        }))
-        uploadedUrls.value.push(...newItems)
-        isUploading.value = false
-        return
-      }
-      lastErr = data.message || 'Upload failed'
-    } catch (err: any) {
-      lastErr = err.message
-    }
+  const urls = await uploadFilesToPicGo(serverUrl.value, imageFiles)
+  if (urls) {
+    const newItems = urls.map((url, i) => ({
+      name: imageFiles[i]?.name ?? `image-${i + 1}`,
+      url,
+    }))
+    uploadedUrls.value.push(...newItems)
+  } else {
+    const base = serverUrl.value.replace(/\/$/, '')
+    errorMsg.value = `Upload failed. Make sure PicGo Server is running on ${base}`
   }
-  errorMsg.value = `Upload failed: ${lastErr}. Make sure PicGo Server is running on ${base}`
   isUploading.value = false
 }
 

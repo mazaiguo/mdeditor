@@ -11,7 +11,7 @@
       @toggle-toc="showSidePanel = !showSidePanel"
       @toggle-theme="toggleTheme"
       @export="showExport = true"
-      @open-file="fileInputRef?.click()"
+      @open-file="handleOpenFile"
       @open-folder="handleOpenFolder"
       @new-file="handleNewFile"
       @toggle-file-sidebar="showSidePanel = !showSidePanel"
@@ -25,12 +25,13 @@
         ref="sidePanelRef"
         :active-file="activeFileName"
         :headings="headings"
+        :active-heading-id="activeHeadingId"
         @file-content="handleFileContent"
         @new-file="handleNewFile"
       />
 
       <div class="editor-main">
-        <div v-if="viewMode !== 'preview'" class="editor-area">
+        <div v-if="viewMode !== 'preview'" class="editor-area" :style="editorAreaStyle">
           <MarkdownEditor
             ref="editorRef"
             v-model="content"
@@ -43,7 +44,7 @@
 
         <div v-if="viewMode === 'split'" class="splitter" @mousedown="startDrag" />
 
-        <div v-if="viewMode !== 'edit'" class="preview-area" :style="previewStyle">
+        <div v-if="viewMode !== 'edit'" class="preview-area" :style="previewAreaStyle">
           <MarkdownPreview
             :html="renderedHtml"
             :theme="theme"
@@ -63,8 +64,14 @@
           </svg>
           Markdown
         </span>
+        <span v-if="activeFileName" class="status-item">
+          {{ dirty ? '● ' : '' }}{{ activeFileName }}
+        </span>
         <span class="status-item">{{ lineCount }} lines</span>
         <span class="status-item">{{ wordCount }} words</span>
+        <span v-if="storageQuotaExceeded" class="status-item status-warning" title="Content is too large for localStorage auto-save">
+          Auto-save disabled (content too large)
+        </span>
       </div>
       <div class="status-right">
         <button class="status-btn" @click="wordWrap = !wordWrap" :title="wordWrap ? 'Disable wrap' : 'Enable wrap'">
@@ -95,7 +102,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { useLocalStorage } from '@vueuse/core'
 import EditorToolbar from './components/EditorToolbar.vue'
 import MarkdownEditor from './components/MarkdownEditor.vue'
 import MarkdownPreview from './components/MarkdownPreview.vue'
@@ -114,6 +122,7 @@ const {
   lineCount,
   renderedHtml,
   headings,
+  storageQuotaExceeded,
   toggleTheme,
   setViewMode,
   toolbarActions,
@@ -126,10 +135,20 @@ const showExport = ref(false)
 const showSidePanel = ref(false)
 const showPicGo = ref(false)
 const activeFileName = ref('')
-const splitRatio = ref(50)
+const dirty = ref(false)
+const currentFileHandle = ref<FileSystemFileHandle | null>(null)
+const activeHeadingId = ref('')
+
+// Split view ratio (percent of editor pane), persisted across sessions
+const splitRatio = useLocalStorage('md-editor-split-ratio', 50)
 let isDragging = false
 
-const previewStyle = ref({})
+const editorAreaStyle = computed(() =>
+  viewMode.value === 'split' ? { flex: `0 0 ${splitRatio.value}%` } : {}
+)
+const previewAreaStyle = computed(() =>
+  viewMode.value === 'split' ? { flex: '1 1 0%' } : {}
+)
 
 function handleToolbarAction(action: string) {
   const fn = toolbarActions[action as keyof typeof toolbarActions]
@@ -142,21 +161,50 @@ function handleInsert(before: string, after: string, placeholder: string) {
   editorRef.value?.insertAtCursor(before, after, placeholder)
 }
 
+function setContentFromSource(text: string, filename: string, handle: FileSystemFileHandle | null) {
+  content.value = text
+  activeFileName.value = filename
+  currentFileHandle.value = handle
+  dirty.value = false
+}
+
 function handleFileOpen(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]
   if (!file) return
   const reader = new FileReader()
   reader.onload = (ev) => {
-    content.value = ev.target?.result as string ?? ''
+    setContentFromSource((ev.target?.result as string) ?? '', file.name, null)
   }
   reader.readAsText(file, 'utf-8')
   if (fileInputRef.value) fileInputRef.value.value = ''
 }
 
+// Prefer the File System Access API (gives a writable handle for Ctrl+S),
+// fall back to the hidden <input type="file"> when unavailable.
+async function handleOpenFile() {
+  const picker = (window as any).showOpenFilePicker
+  if (typeof picker === 'function') {
+    try {
+      const [handle] = await picker({
+        multiple: false,
+        types: [
+          { description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown', '.txt'] } },
+        ],
+      })
+      const file = await handle.getFile()
+      setContentFromSource(await file.text(), file.name, handle)
+      return
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return
+      // fall through to input fallback
+    }
+  }
+  fileInputRef.value?.click()
+}
+
 function handleNewFile() {
   if (content.value.trim() && !confirm('Create new document? Unsaved changes will be lost.')) return
-  content.value = '# New Document\n\nStart writing here...\n'
-  activeFileName.value = ''
+  setContentFromSource('# New Document\n\nStart writing here...\n', '', null)
 }
 
 function handleOpenFolder() {
@@ -164,9 +212,32 @@ function handleOpenFolder() {
   sidePanelRef.value?.openFolder()
 }
 
-function handleFileContent(fileContent: string, filename: string) {
-  content.value = fileContent
-  activeFileName.value = filename
+function handleFileContent(fileContent: string, filename: string, handle: FileSystemFileHandle | null) {
+  setContentFromSource(fileContent, filename, handle)
+}
+
+async function saveCurrentFile() {
+  const handle = currentFileHandle.value
+  if (!handle) {
+    // No writable handle: fall back to downloading the markdown
+    const blob = new Blob([content.value], { type: 'text/markdown' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = (activeFileName.value || 'document').replace(/\.[^.]+$/, '') + '.md'
+    a.click()
+    URL.revokeObjectURL(url)
+    return
+  }
+  try {
+    const writable = await (handle as any).createWritable()
+    await writable.write(content.value)
+    await writable.close()
+    dirty.value = false
+  } catch (err) {
+    console.error('Save failed:', err)
+    alert('Save failed. Check file permissions.')
+  }
 }
 
 function handleReplaceImage(oldPath: string, newUrl: string) {
@@ -183,14 +254,82 @@ function escapeRegExp(str: string) {
 }
 
 function handleGlobalKeydown(e: KeyboardEvent) {
-  if (e.ctrlKey && e.shiftKey && (e.key === 'O' || e.key === 'o' || e.code === 'KeyO')) {
+  const mod = e.ctrlKey || e.metaKey
+  if (!mod) return
+
+  if (e.shiftKey && (e.key === 'O' || e.key === 'o' || e.code === 'KeyO')) {
     e.preventDefault()
     handleOpenFolder()
+    return
+  }
+  if (e.key === 'o' || e.code === 'KeyO') {
+    e.preventDefault()
+    handleOpenFile()
+    return
+  }
+  if (e.key === 'n' || e.code === 'KeyN') {
+    e.preventDefault()
+    handleNewFile()
+    return
+  }
+  if (e.key === 's' || e.code === 'KeyS') {
+    e.preventDefault()
+    saveCurrentFile()
   }
 }
 
-onMounted(() => window.addEventListener('keydown', handleGlobalKeydown))
-onUnmounted(() => window.removeEventListener('keydown', handleGlobalKeydown))
+// Track dirty state + window title
+watch(content, () => {
+  dirty.value = true
+})
+watch([dirty, activeFileName], ([isDirty, name]) => {
+  document.title = (isDirty ? '● ' : '') + (name ? `${name} - ` : '') + 'MD Editor'
+})
+
+// TOC scroll tracking: highlight the heading currently visible at the top of
+// the preview pane. Uses a capture-phase window listener so it survives the
+// preview element being recreated when switching view modes.
+let tocRafPending = false
+function updateActiveHeading() {
+  const previewEl = document.querySelector('.preview-pane')
+  if (!previewEl) {
+    activeHeadingId.value = ''
+    return
+  }
+  const containerTop = previewEl.getBoundingClientRect().top
+  let current = ''
+  for (const h of headings.value) {
+    const el = document.getElementById(h.id)
+    if (!el) continue
+    if (el.getBoundingClientRect().top - containerTop <= 80) current = h.id
+    else break
+  }
+  activeHeadingId.value = current
+}
+
+function handleScrollCapture(e: Event) {
+  if (!(e.target instanceof Element) || !e.target.classList.contains('preview-pane')) return
+  if (tocRafPending) return
+  tocRafPending = true
+  requestAnimationFrame(() => {
+    tocRafPending = false
+    updateActiveHeading()
+  })
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleGlobalKeydown)
+  window.addEventListener('scroll', handleScrollCapture, true)
+  nextTick(updateActiveHeading)
+})
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleGlobalKeydown)
+  window.removeEventListener('scroll', handleScrollCapture, true)
+})
+
+watch(renderedHtml, () => {
+  nextTick(updateActiveHeading)
+})
 
 function startDrag(e: MouseEvent) {
   isDragging = true

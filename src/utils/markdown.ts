@@ -1,12 +1,13 @@
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
+import DOMPurify from 'dompurify'
 import markdownItAnchor from 'markdown-it-anchor'
 import markdownItTaskLists from 'markdown-it-task-lists'
 // @ts-ignore - no types
 import markdownItMark from 'markdown-it-mark'
-// @ts-ignore
+// @ts-ignore - no types
 import markdownItSub from 'markdown-it-sub'
-// @ts-ignore
+// @ts-ignore - no types
 import markdownItSup from 'markdown-it-sup'
 import yaml from 'js-yaml'
 
@@ -127,7 +128,7 @@ const md = new MarkdownIt({
       return `<div class="mermaid-wrapper"><div class="mermaid">${escaped}</div></div>`
     }
 
-    let highlighted = ''
+    let highlighted: string
     try {
       if (lang && hljs.getLanguage(lang)) {
         highlighted = hljs.highlight(str, { language: lang, ignoreIllegals: true }).value
@@ -209,6 +210,10 @@ md.use(markdownItSub)
 md.use(markdownItSup)
 
 md.use(markdownItAnchor, {
+  // Prefix matches DOMPurify SANITIZE_NAMED_PROPS so the heading id in the
+  // token stream equals the id that survives sanitization (TOC links work).
+  slugify: (s: string) =>
+    'user-content-' + encodeURIComponent(String(s).trim().toLowerCase().replace(/\s+/g, '-')),
   permalink: markdownItAnchor.permalink.ariaHidden({
     placement: 'before',
     symbol: '#',
@@ -218,10 +223,22 @@ md.use(markdownItAnchor, {
 md.use(markdownItTaskLists, { enabled: true, label: true })
 
 /**
+ * Sanitize rendered HTML to prevent XSS (markdown-it runs with html: true).
+ * DOMPurify defaults keep classes, data-* attributes, buttons and inline SVG,
+ * which our code-block UI relies on, while stripping scripts and handlers.
+ */
+export function sanitizeHtml(html: string): string {
+  // SANITIZE_NAMED_PROPS keeps id/name attributes by prefixing them with
+  // `user-content-` (safe against DOM clobbering). markdown-it-anchor is
+  // configured with the same slugPrefix so TOC anchors still resolve.
+  return DOMPurify.sanitize(html, { SANITIZE_NAMED_PROPS: true })
+}
+
+/**
  * Parse YAML front matter from Markdown content.
  * Returns { meta, body } where meta is the parsed object and body is the remaining Markdown.
  */
-function parseFrontMatter(source: string): { meta: Record<string, unknown> | null; body: string } {
+export function parseFrontMatter(source: string): { meta: Record<string, unknown> | null; body: string } {
   const match = source.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/m)
   if (!match) return { meta: null, body: source }
   try {
@@ -256,33 +273,52 @@ function renderFrontMatter(meta: Record<string, unknown>): string {
   return `<div class="front-matter-block"><table class="fm-table">${rows}</table></div>`
 }
 
-export function renderMarkdown(source: string): string {
-  const { meta, body } = parseFrontMatter(source)
-  const fmHtml = meta ? renderFrontMatter(meta) : ''
-  return fmHtml + md.render(body)
+export interface Heading {
+  level: number
+  text: string
+  html: string
+  id: string
 }
 
-export function extractHeadings(source: string): Array<{ level: number; text: string; html: string; id: string }> {
-  const { body } = parseFrontMatter(source)
-  const headings: Array<{ level: number; text: string; html: string; id: string }> = []
+/**
+ * Parse the document once and derive both the sanitized HTML and the heading
+ * list from the same token stream (avoids parsing twice per keystroke).
+ */
+export function parseDocument(source: string): { html: string; headings: Heading[] } {
+  const { meta, body } = parseFrontMatter(source)
+  const fmHtml = meta ? renderFrontMatter(meta) : ''
+
   const tokens = md.parse(body, {})
+  const html = sanitizeHtml(fmHtml + md.renderer.render(tokens, md.options, {}))
+
+  const headings: Heading[] = []
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i]
     if (token.type === 'heading_open') {
       const level = Number(token.tag.slice(1))
       const id = token.attrGet('id') || ''
       const inlineToken = tokens[i + 1]
-      const text = inlineToken?.children
+      const text = (inlineToken?.children
         ?.filter((t: any) => ['text', 'code_inline'].includes(t.type))
         .map((t: any) => t.content)
-        .join('') || inlineToken?.content || ''
+        .join('') || inlineToken?.content || '').trim()
       const filteredChildren = (inlineToken?.children || []).filter(
         (t: any) => !(t.type === 'html_inline' && t.content.includes('header-anchor'))
       )
       const rawHtml = inlineToken ? md.renderer.renderInline(filteredChildren, md.options, {}) : ''
-      const html = rawHtml.replace(/<a[^>]*class="header-anchor"[^>]*>[\s\S]*?<\/a>\s*/g, '')
-      headings.push({ level, text, html, id })
+      const headingHtml = sanitizeHtml(
+        rawHtml.replace(/<a[^>]*class="header-anchor"[^>]*>[\s\S]*?<\/a>\s*/g, '')
+      )
+      headings.push({ level, text, html: headingHtml, id })
     }
   }
-  return headings
+  return { html, headings }
+}
+
+export function renderMarkdown(source: string): string {
+  return parseDocument(source).html
+}
+
+export function extractHeadings(source: string): Heading[] {
+  return parseDocument(source).headings
 }

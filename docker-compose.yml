@@ -9,6 +9,11 @@ services:
     environment:
       - PORT=5080
       - TZ=Asia/Shanghai
+      # Restrict /api/local-image & /api/save-image to the mounted volume
+      - IMAGE_ROOT=/app/dist/images
+    volumes:
+      # Persist images uploaded via the editor so they survive image upgrades
+      - md-editor-images:/app/dist/images
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:5080"]
       interval: 30s
@@ -20,3 +25,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+volumes:
+  md-editor-images:

@@ -1,0 +1,52 @@
+/* ===== Editor Layout ===== */
+.editor-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.editor-main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.editor-area {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.preview-area {
+  flex: 1;
+  overflow: hidden;
+  border-left: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+}
+
+.mode-edit .preview-area,
+.mode-preview .editor-area {
+  display: none;
+}
+
+.mode-preview .preview-area {
+  border-left: none;
+}
+
+/* ===== Splitter ===== */
+.splitter {
+  width: 4px;
+  background: var(--border-color);
+  cursor: col-resize;
+  flex-shrink: 0;
+  transition: background 0.2s;
+  position: relative;
+}
+
+.splitter:hover,
+.splitter:active {
+  background: var(--accent);
+}

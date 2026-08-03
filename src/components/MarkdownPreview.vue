@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="previewRoot"
     class="preview-pane"
     :class="`theme-${theme}`"
     :style="{ fontSize: fontSize + 'px' }"
@@ -51,9 +52,8 @@
 <script setup lang="ts">
 import { onMounted, watch, nextTick, reactive, ref, onUnmounted } from 'vue'
 import { useLocalStorage } from '@vueuse/core'
-import mermaid from 'mermaid'
-
-mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' })
+import type Mermaid from 'mermaid'
+import { uploadPathToPicGo } from '../utils/picgo'
 
 const props = defineProps<{
   html: string
@@ -67,6 +67,7 @@ const emit = defineEmits<{
 
 const picgoServerUrl = useLocalStorage('picgo-server-url', 'http://127.0.0.1:36677')
 const uploading = ref(false)
+const previewRoot = ref<HTMLElement>()
 
 const ctxMenu = reactive({
   visible: false,
@@ -78,8 +79,102 @@ const ctxMenu = reactive({
 
 const lightboxSrc = ref('')
 
+/* ── Mermaid: lazy-load the ~2MB bundle only when a diagram is present ── */
+
+let mermaidInstance: typeof Mermaid | null = null
+let mermaidLoading: Promise<typeof Mermaid> | null = null
+
+async function getMermaid(): Promise<typeof Mermaid> {
+  if (mermaidInstance) return mermaidInstance
+  if (!mermaidLoading) {
+    mermaidLoading = import('mermaid').then(({ default: m }) => {
+      m.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'strict' })
+      mermaidInstance = m
+      return m
+    })
+  }
+  return mermaidLoading
+}
+
+// Cache rendered SVGs by diagram source so unchanged diagrams are not
+// re-rendered on every keystroke.
+const mermaidSvgCache = new Map<string, string>()
+
+async function renderMermaid() {
+  const previewEl = previewRoot.value
+  if (!previewEl) return
+  const nodes = Array.from(previewEl.querySelectorAll<HTMLElement>('.mermaid:not([data-rendered])'))
+  if (!nodes.length) return
+
+  const pending: HTMLElement[] = []
+  for (const node of nodes) {
+    const source = node.textContent ?? ''
+    const cached = mermaidSvgCache.get(source)
+    if (cached) {
+      node.innerHTML = cached
+      node.setAttribute('data-rendered', 'true')
+    } else {
+      node.setAttribute('data-mermaid-source', source)
+      pending.push(node)
+    }
+  }
+  if (!pending.length) return
+
+  try {
+    const m = await getMermaid()
+    await m.run({ nodes: pending })
+    for (const node of pending) {
+      const source = node.getAttribute('data-mermaid-source') ?? ''
+      mermaidSvgCache.set(source, node.innerHTML)
+      node.removeAttribute('data-mermaid-source')
+      node.setAttribute('data-rendered', 'true')
+    }
+  } catch (e) {
+    console.warn('Mermaid render error:', e)
+  }
+}
+
+/* ── Click handling (single delegated listener, survives v-html re-renders) ── */
+
+function handleCopyCode(btn: HTMLElement) {
+  const wrapper = btn.closest('.code-block-wrapper')
+  const code = wrapper?.querySelector('code')
+  if (!code) return
+  const text = Array.from(code.querySelectorAll('.code-line'))
+    .map(el => el.textContent ?? '')
+    .join('\n')
+  navigator.clipboard.writeText(text).then(() => {
+    const original = btn.innerHTML
+    btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>`
+    btn.classList.add('copied')
+    setTimeout(() => {
+      btn.innerHTML = original
+      btn.classList.remove('copied')
+    }, 2000)
+  })
+}
+
+function handleCollapse(btn: HTMLElement) {
+  const wrapper = btn.closest('.code-block-wrapper') as HTMLElement
+  if (!wrapper) return
+  const isCollapsed = wrapper.classList.toggle('collapsed')
+  btn.title = isCollapsed ? 'Expand' : 'Collapse/Expand'
+}
+
 function handleClick(e: MouseEvent) {
   const target = e.target as HTMLElement
+
+  const copyBtn = target.closest('.copy-btn') as HTMLElement | null
+  if (copyBtn) {
+    handleCopyCode(copyBtn)
+    return
+  }
+  const collapseBtn = target.closest('.collapse-btn') as HTMLElement | null
+  if (collapseBtn) {
+    handleCollapse(collapseBtn)
+    return
+  }
+
   if (target.tagName === 'IMG') {
     e.preventDefault()
     lightboxSrc.value = (target as HTMLImageElement).src
@@ -136,22 +231,12 @@ async function uploadLocalImage() {
 
   uploading.value = true
   try {
-    const base = picgoServerUrl.value.replace(/\/$/, '')
-    const res = await fetch(`${base}/upload`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ list: [ctxMenu.localPath] }),
-    })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const data = await res.json()
-    if (data.success && data.result?.length) {
-      const newUrl = data.result[0] as string
+    const newUrl = await uploadPathToPicGo(picgoServerUrl.value, ctxMenu.localPath)
+    if (newUrl) {
       emit('replace-image', ctxMenu.localPath, newUrl)
     } else {
-      console.error('PicGo upload failed:', data.message)
+      console.error('PicGo upload failed')
     }
-  } catch (err) {
-    console.error('PicGo upload error:', err)
   } finally {
     uploading.value = false
   }
@@ -163,69 +248,14 @@ function copyImageUrl() {
   closeCtxMenu()
 }
 
-function initCodeBlocks() {
-  const previewEl = document.querySelector('.preview-pane')
+/* ── Post-render state: auto-collapse blocks marked with data-collapsed ── */
+
+function applyCollapsedState() {
+  const previewEl = previewRoot.value
   if (!previewEl) return
-
-  // Initialize copy buttons
-  previewEl.querySelectorAll('.copy-btn').forEach((btn) => {
-    const newBtn = btn.cloneNode(true) as HTMLElement
-    btn.replaceWith(newBtn)
-    newBtn.addEventListener('click', () => {
-      const wrapper = newBtn.closest('.code-block-wrapper')
-      const code = wrapper?.querySelector('code')
-      if (code) {
-        const text = Array.from(code.querySelectorAll('.code-line'))
-          .map(el => el.textContent ?? '')
-          .join('\n')
-        navigator.clipboard.writeText(text).then(() => {
-          const original = newBtn.innerHTML
-          newBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>`
-          newBtn.classList.add('copied')
-          setTimeout(() => {
-            newBtn.innerHTML = original
-            newBtn.classList.remove('copied')
-          }, 2000)
-        })
-      }
-    })
-  })
-
-  // Initialize collapse buttons
-  previewEl.querySelectorAll('.collapse-btn').forEach((btn) => {
-    const newBtn = btn.cloneNode(true) as HTMLElement
-    btn.replaceWith(newBtn)
-    newBtn.addEventListener('click', () => {
-      const wrapper = newBtn.closest('.code-block-wrapper') as HTMLElement
-      if (!wrapper) return
-      const body = wrapper.querySelector('.code-block-body') as HTMLElement
-      const header = wrapper.querySelector('.code-block-header') as HTMLElement
-      const isCollapsed = wrapper.classList.toggle('collapsed')
-
-      if (isCollapsed) {
-        const headerH = header ? header.getBoundingClientRect().height : 32
-        wrapper.style.maxHeight = `${Math.ceil(headerH)}px`
-        wrapper.style.height = `${Math.ceil(headerH)}px`
-        if (body) body.style.display = 'none'
-      } else {
-        wrapper.style.maxHeight = ''
-        wrapper.style.height = ''
-        if (body) body.style.display = ''
-      }
-      newBtn.title = isCollapsed ? 'Expand' : 'Collapse/Expand'
-    })
-  })
-
-  // Auto-collapse blocks marked with data-collapsed="true"
   previewEl.querySelectorAll<HTMLElement>('.code-block-wrapper[data-collapsed="true"]').forEach((wrapper) => {
-    const body = wrapper.querySelector('.code-block-body') as HTMLElement
-    const header = wrapper.querySelector('.code-block-header') as HTMLElement
-    const btn = wrapper.querySelector('.collapse-btn') as HTMLElement
     wrapper.classList.add('collapsed')
-    const headerH = header ? header.getBoundingClientRect().height : 32
-    wrapper.style.maxHeight = `${Math.ceil(headerH)}px`
-    wrapper.style.height = `${Math.ceil(headerH)}px`
-    if (body) body.style.display = 'none'
+    const btn = wrapper.querySelector('.collapse-btn') as HTMLElement | null
     if (btn) btn.title = 'Expand'
   })
 }
@@ -234,27 +264,15 @@ function onDocumentClick() {
   if (ctxMenu.visible) closeCtxMenu()
 }
 
-async function renderMermaid() {
-  const previewEl = document.querySelector('.preview-pane')
-  if (!previewEl) return
-  const nodes = previewEl.querySelectorAll<HTMLElement>('.mermaid')
-  if (!nodes.length) return
-  try {
-    await mermaid.run({ nodes: Array.from(nodes) })
-  } catch (e) {
-    console.warn('Mermaid render error:', e)
-  }
-}
-
 watch(() => props.html, async () => {
   await nextTick()
-  initCodeBlocks()
+  applyCollapsedState()
   await renderMermaid()
 })
 
 onMounted(() => {
   nextTick(async () => {
-    initCodeBlocks()
+    applyCollapsedState()
     await renderMermaid()
   })
   document.addEventListener('click', onDocumentClick)
