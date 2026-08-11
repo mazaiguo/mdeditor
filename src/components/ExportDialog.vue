@@ -260,10 +260,64 @@ function exportPdf(title: string) {
   emit('close')
 }
 
+/**
+ * Prepare the preview HTML for Word export.
+ *
+ * html-docx-js-typescript writes the MHT part with
+ * `Content-Transfer-Encoding: quoted-printable` but only escapes `=`,
+ * leaving raw UTF-8 bytes for CJK characters. Word's strict QP decoder
+ * then misreads them and shows mojibake (乱码). Converting every
+ * non-ASCII character to an HTML numeric entity keeps the MHT stream
+ * pure ASCII and sidesteps the bug entirely.
+ *
+ * We also strip interactive/UI chrome (SVG buttons, traffic-light dots,
+ * line-number gutter, language chips) that Word cannot render and which
+ * otherwise leak as stray markup/text into the document.
+ *
+ * Table borders need special handling: the preview defines them via CSS
+ * class selectors and custom properties (var(--table-border)), which
+ * Word's altChunk renderer silently ignores, leaving tables borderless.
+ * We inline border styles on every table/th/td and add the legacy
+ * border="1" attribute so the grid is visible in Word.
+ */
+function prepareHtmlForDocx(fullHtml: string): string {
+  const doc = new DOMParser().parseFromString(fullHtml, 'text/html')
+
+  // Strip interactive UI chrome that Word cannot render
+  doc.querySelectorAll(
+    '.copy-btn, .collapse-btn, .traffic-lights, .code-file-icon, .code-lang-label, .line-numbers-gutter',
+  ).forEach((el) => el.remove())
+
+  // Inline table borders: Word ignores <style> rules that use class
+  // selectors and CSS custom properties, so tables would render
+  // borderless. The legacy border attribute plus inline styles
+  // guarantees a visible grid in the exported document.
+  doc.querySelectorAll<HTMLTableElement>('table').forEach((table) => {
+    table.setAttribute('border', '1')
+    table.setAttribute('cellspacing', '0')
+    table.setAttribute('cellpadding', '6')
+    table.style.borderCollapse = 'collapse'
+    table.style.border = '1px solid #999'
+    table.querySelectorAll<HTMLElement>('th, td').forEach((cell) => {
+      cell.style.border = '1px solid #999'
+      if (cell.tagName === 'TH') {
+        cell.style.background = '#7babee'
+        cell.style.color = '#ffffff'
+      }
+    })
+  })
+
+  const serialized = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML
+  return serialized.replace(/[^\x00-\x7F]/g, (ch) => {
+    const code = ch.codePointAt(0)!
+    return `&#${code};`
+  })
+}
+
 async function exportDocx(base: string) {
   try {
     const { default: htmlDocx } = await import('html-docx-js-typescript')
-    const html = buildFullHtml(base)
+    const html = prepareHtmlForDocx(buildFullHtml(base))
     const blob = await htmlDocx.asBlob(html, {
       orientation: 'portrait',
       margins: { top: 1440, right: 1440, bottom: 1440, left: 1800 },
