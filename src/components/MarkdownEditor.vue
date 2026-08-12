@@ -12,18 +12,16 @@
 
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from 'vue'
-import { useLocalStorage } from '@vueuse/core'
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection } from '@codemirror/view'
 import { EditorState, Compartment } from '@codemirror/state'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
 import { oneDark } from '@codemirror/theme-one-dark'
-import { syntaxHighlighting, defaultHighlightStyle, bracketMatching, foldGutter, foldKeymap, HighlightStyle } from '@codemirror/language'
-import { tags } from '@lezer/highlight'
+import { syntaxHighlighting, defaultHighlightStyle, bracketMatching, foldGutter, foldKeymap } from '@codemirror/language'
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search'
-import { uploadFileToPicGo, uploadPathToPicGo } from '../utils/picgo'
-import { getImageTimestamp, fileToDataUrl } from '../utils/image'
+import { getLightTheme, getDarkTheme, markdownHighlight } from '../utils/codemirrorTheme'
+import { useImageUpload } from '../composables/useImageUpload'
 
 const props = defineProps<{
   modelValue: string
@@ -34,7 +32,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
-  'insert': [before: string, after: string, placeholder: string]
 }>()
 
 const editorContainer = ref<HTMLDivElement>()
@@ -43,138 +40,17 @@ const themeCompartment = new Compartment()
 const wrapCompartment = new Compartment()
 const mdHighlightCompartment = new Compartment()
 
-function getLightTheme() {
-  return EditorView.theme({
-    '&': {
-      height: '100%',
-      backgroundColor: 'transparent',
-      fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", Menlo, Monaco, Consolas, monospace',
-    },
-    '.cm-content': {
-      padding: '20px 24px',
-      minHeight: '100%',
-      caretColor: '#0066cc',
-      color: '#1d1d1f',
-    },
-    '.cm-scroller': {
-      overflow: 'auto',
-      fontFamily: 'inherit',
-    },
-    '.cm-gutters': {
-      backgroundColor: 'transparent',
-      borderRight: '1px solid #e5e5e7',
-      color: '#aeaeb2',
-      fontSize: '0.8em',
-      minWidth: '40px',
-    },
-    '.cm-activeLineGutter': {
-      backgroundColor: 'rgba(0, 102, 204, 0.06)',
-    },
-    '.cm-activeLine': {
-      backgroundColor: 'rgba(0, 102, 204, 0.04)',
-      borderRadius: '3px',
-    },
-    '.cm-cursor': {
-      borderLeft: '2px solid #0066cc',
-    },
-    '.cm-selectionBackground': {
-      backgroundColor: 'rgba(0, 102, 204, 0.15) !important',
-    },
-    '&.cm-focused .cm-selectionBackground': {
-      backgroundColor: 'rgba(0, 102, 204, 0.2) !important',
-    },
-    '.cm-matchingBracket': {
-      backgroundColor: 'rgba(0, 102, 204, 0.15)',
-      outline: '1px solid rgba(0, 102, 204, 0.3)',
-    },
-    '.cm-searchMatch': {
-      backgroundColor: 'rgba(255, 204, 0, 0.3)',
-      outline: '1px solid rgba(255, 204, 0, 0.6)',
-    },
-    '.cm-searchMatch.cm-searchMatch-selected': {
-      backgroundColor: 'rgba(255, 149, 0, 0.4)',
-    },
-  }, { dark: false })
-}
-
-function getDarkTheme() {
-  return EditorView.theme({
-    '&': {
-      height: '100%',
-      backgroundColor: 'transparent',
-      fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", Menlo, Monaco, Consolas, monospace',
-    },
-    '.cm-content': {
-      padding: '20px 24px',
-      minHeight: '100%',
-      caretColor: '#4facfe',
-      color: '#e8e8ed',
-    },
-    '.cm-scroller': {
-      overflow: 'auto',
-      fontFamily: 'inherit',
-    },
-    '.cm-gutters': {
-      backgroundColor: 'transparent',
-      borderRight: '1px solid #3a3a3c',
-      color: '#636366',
-      fontSize: '0.8em',
-      minWidth: '40px',
-    },
-    '.cm-activeLineGutter': {
-      backgroundColor: 'rgba(79, 172, 254, 0.08)',
-    },
-    '.cm-activeLine': {
-      backgroundColor: 'rgba(79, 172, 254, 0.05)',
-      borderRadius: '3px',
-    },
-    '.cm-cursor': {
-      borderLeft: '2px solid #4facfe',
-    },
-    '.cm-selectionBackground': {
-      backgroundColor: 'rgba(79, 172, 254, 0.2) !important',
-    },
-    '&.cm-focused .cm-selectionBackground': {
-      backgroundColor: 'rgba(79, 172, 254, 0.25) !important',
-    },
-  }, { dark: true })
-}
-
-const markdownHighlightStyle = HighlightStyle.define([
-  { tag: tags.heading1, fontSize: '1.4em', fontWeight: '700', color: '#0066cc' },
-  { tag: tags.heading2, fontSize: '1.2em', fontWeight: '600', color: '#0077dd' },
-  { tag: tags.heading3, fontSize: '1.1em', fontWeight: '600', color: '#0088ee' },
-  { tag: tags.heading4, fontWeight: '600', color: '#0099ff' },
-  { tag: tags.strong, fontWeight: '700', color: '#d63384' },
-  { tag: tags.emphasis, fontStyle: 'italic', color: '#7c3aed' },
-  { tag: tags.strikethrough, textDecoration: 'line-through', color: '#6c757d' },
-  { tag: tags.link, color: '#0066cc', textDecoration: 'underline' },
-  { tag: tags.url, color: '#059669' },
-  { tag: tags.monospace, fontFamily: 'var(--font-mono)', color: '#d97706', background: 'rgba(217, 119, 6, 0.1)', borderRadius: '3px', padding: '1px 3px' },
-  { tag: tags.quote, color: '#64748b', fontStyle: 'italic' },
-  { tag: tags.list, color: '#0066cc' },
-  { tag: tags.meta, color: '#059669' },
-  { tag: tags.comment, color: '#94a3b8', fontStyle: 'italic' },
-  { tag: tags.keyword, color: '#7c3aed', fontWeight: '600' },
-])
-
-const darkMarkdownHighlightStyle = HighlightStyle.define([
-  { tag: tags.heading1, fontSize: '1.4em', fontWeight: '700', color: '#60a5fa' },
-  { tag: tags.heading2, fontSize: '1.2em', fontWeight: '600', color: '#7db5fb' },
-  { tag: tags.heading3, fontSize: '1.1em', fontWeight: '600', color: '#93c5fd' },
-  { tag: tags.heading4, fontWeight: '600', color: '#a5d0fd' },
-  { tag: tags.strong, fontWeight: '700', color: '#f472b6' },
-  { tag: tags.emphasis, fontStyle: 'italic', color: '#c084fc' },
-  { tag: tags.strikethrough, textDecoration: 'line-through', color: '#94a3b8' },
-  { tag: tags.link, color: '#60a5fa', textDecoration: 'underline' },
-  { tag: tags.url, color: '#34d399' },
-  { tag: tags.monospace, fontFamily: 'var(--font-mono)', color: '#fbbf24', background: 'rgba(251, 191, 36, 0.12)', borderRadius: '3px', padding: '1px 3px' },
-  { tag: tags.quote, color: '#94a3b8', fontStyle: 'italic' },
-  { tag: tags.list, color: '#60a5fa' },
-  { tag: tags.meta, color: '#34d399' },
-  { tag: tags.comment, color: '#64748b', fontStyle: 'italic' },
-  { tag: tags.keyword, color: '#c084fc', fontWeight: '600' },
-])
+// Markdown shortcut keys. Each calls our own insertAtCursor directly
+// (previously these emitted an `insert` event that App forwarded back here).
+const markdownKeymap = [
+  { key: 'Ctrl-b', run: () => { insertAtCursor('**', '**', 'bold text'); return true } },
+  { key: 'Ctrl-i', run: () => { insertAtCursor('*', '*', 'italic text'); return true } },
+  { key: 'Ctrl-k', run: () => { insertAtCursor('[', '](url)', 'link text'); return true } },
+  { key: 'Ctrl-1', run: () => { insertAtCursor('# ', '', 'Heading 1'); return true } },
+  { key: 'Ctrl-2', run: () => { insertAtCursor('## ', '', 'Heading 2'); return true } },
+  { key: 'Ctrl-3', run: () => { insertAtCursor('### ', '', 'Heading 3'); return true } },
+  { key: 'Ctrl-4', run: () => { insertAtCursor('#### ', '', 'Heading 4'); return true } },
+]
 
 function buildExtensions() {
   return [
@@ -186,7 +62,7 @@ function buildExtensions() {
     bracketMatching(),
     foldGutter(),
     highlightSelectionMatches(),
-    mdHighlightCompartment.of(syntaxHighlighting(props.theme === 'dark' ? darkMarkdownHighlightStyle : markdownHighlightStyle)),
+    mdHighlightCompartment.of(markdownHighlight(props.theme)),
     syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
     markdown({ base: markdownLanguage, codeLanguages: languages }),
     themeCompartment.of(props.theme === 'dark' ? [oneDark, getDarkTheme()] : getLightTheme()),
@@ -197,55 +73,7 @@ function buildExtensions() {
       ...searchKeymap,
       ...foldKeymap,
       indentWithTab,
-      {
-        key: 'Ctrl-b',
-        run(_view) {
-          emit('insert', '**', '**', 'bold text')
-          return true
-        },
-      },
-      {
-        key: 'Ctrl-i',
-        run(_view) {
-          emit('insert', '*', '*', 'italic text')
-          return true
-        },
-      },
-      {
-        key: 'Ctrl-k',
-        run(_view) {
-          emit('insert', '[', '](url)', 'link text')
-          return true
-        },
-      },
-      {
-        key: 'Ctrl-1',
-        run(_view) {
-          emit('insert', '# ', '', 'Heading 1')
-          return true
-        },
-      },
-      {
-        key: 'Ctrl-2',
-        run(_view) {
-          emit('insert', '## ', '', 'Heading 2')
-          return true
-        },
-      },
-      {
-        key: 'Ctrl-3',
-        run(_view) {
-          emit('insert', '### ', '', 'Heading 3')
-          return true
-        },
-      },
-      {
-        key: 'Ctrl-4',
-        run(_view) {
-          emit('insert', '#### ', '', 'Heading 4')
-          return true
-        },
-      },
+      ...markdownKeymap,
     ]),
     EditorView.updateListener.of((update) => {
       if (update.docChanged) {
@@ -288,7 +116,7 @@ watch(() => props.theme, (newTheme) => {
   editorView?.dispatch({
     effects: [
       themeCompartment.reconfigure(newTheme === 'dark' ? [oneDark, getDarkTheme()] : getLightTheme()),
-      mdHighlightCompartment.reconfigure(syntaxHighlighting(newTheme === 'dark' ? darkMarkdownHighlightStyle : markdownHighlightStyle)),
+      mdHighlightCompartment.reconfigure(markdownHighlight(newTheme)),
     ],
   })
 })
@@ -329,124 +157,7 @@ function insertRaw(text: string) {
   editorView.focus()
 }
 
-const defaultPicGoUrl = 'http://127.0.0.1:36677'
-const picgoServerUrl = useLocalStorage('picgo-server-url', defaultPicGoUrl)
-const isUploadingImage = ref(false)
-
-async function saveImageLocally(file: File): Promise<string | null> {
-  const ext = file.type.split('/')[1]?.replace('jpeg', 'jpg') || 'png'
-  try {
-    const res = await fetch('/api/save-image', {
-      method: 'POST',
-      headers: { 'Content-Type': file.type, 'X-Image-Ext': ext },
-      body: file,
-    })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const data = await res.json()
-    if (data.success) return data.path as string
-    throw new Error('Save failed')
-  } catch (err) {
-    console.error('Local image save failed:', err)
-    return null
-  }
-}
-
-// Local Windows/Mac image path pattern: ![alt](C:\...\file.ext) or ![alt](/home/...ext)
-const LOCAL_IMG_RE = /!\[([^\]]*)\]\(([a-zA-Z]:[^)]+\.(?:png|jpe?g|gif|webp|bmp|svg)|\/(?:[^)]+)\.(?:png|jpe?g|gif|webp|bmp|svg))\)/gi
-
-async function replaceLocalImgPaths(text: string): Promise<{ result: string; replaced: boolean }> {
-  const matches = [...text.matchAll(LOCAL_IMG_RE)]
-  if (!matches.length) return { result: text, replaced: false }
-
-  let result = text
-  for (const match of matches) {
-    const [fullMatch, altText, localPath] = match
-    const url = await uploadPathToPicGo(picgoServerUrl.value, localPath)
-    if (url) {
-      result = result.replace(fullMatch, `![${altText || `image-${getImageTimestamp()}`}](${url})`)
-    }
-  }
-  return { result, replaced: result !== text }
-}
-
-function handlePasteImage(e: ClipboardEvent) {
-  const items = e.clipboardData?.items
-  if (!items) return
-
-  // Check for binary image first (screenshot / copied image)
-  for (const item of items) {
-    if (item.type.startsWith('image/')) {
-      e.preventDefault()
-      const file = item.getAsFile()
-      if (!file) continue
-      isUploadingImage.value = true
-      uploadFileToPicGo(picgoServerUrl.value, file).then(async (url) => {
-        if (url) {
-          isUploadingImage.value = false
-          insertRaw(`![image-${getImageTimestamp()}](${url})`)
-          return
-        }
-        // Fallback 1: save to local server
-        const localPath = await saveImageLocally(file)
-        if (localPath) {
-          isUploadingImage.value = false
-          insertRaw(`![image-${getImageTimestamp()}](${localPath})`)
-          return
-        }
-        // Fallback 2: embed as base64 so the preview always works
-        const dataUrl = await fileToDataUrl(file)
-        isUploadingImage.value = false
-        insertRaw(`![image-${getImageTimestamp()}](${dataUrl})`)
-      })
-      return
-    }
-  }
-
-  // Check for pasted text containing local image paths (e.g. from Typora)
-  const plainText = e.clipboardData?.getData('text/plain') ?? ''
-  LOCAL_IMG_RE.lastIndex = 0
-  if (plainText && LOCAL_IMG_RE.test(plainText)) {
-    e.preventDefault()
-    LOCAL_IMG_RE.lastIndex = 0
-    isUploadingImage.value = true
-    replaceLocalImgPaths(plainText).then(({ result }) => {
-      isUploadingImage.value = false
-      insertRaw(result)
-    })
-  }
-}
-
-async function pickAndInsertLocalImage() {
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.accept = 'image/*'
-  input.onchange = async () => {
-    const file = input.files?.[0]
-    if (!file) return
-    const alt = file.name.replace(/\.[^.]+$/, '')
-    isUploadingImage.value = true
-
-    // Try PicGo first
-    const url = await uploadFileToPicGo(picgoServerUrl.value, file)
-    if (url) {
-      isUploadingImage.value = false
-      insertRaw(`![${alt}](${url})`)
-      return
-    }
-    // Try local server save
-    const localPath = await saveImageLocally(file)
-    if (localPath) {
-      isUploadingImage.value = false
-      insertRaw(`![${alt}](${localPath})`)
-      return
-    }
-    // Final fallback: base64 embed
-    const dataUrl = await fileToDataUrl(file)
-    isUploadingImage.value = false
-    insertRaw(`![${alt}](${dataUrl})`)
-  }
-  input.click()
-}
+const { isUploadingImage, handlePasteImage, pickAndInsertLocalImage } = useImageUpload(insertRaw)
 
 defineExpose({ insertAtCursor, pickAndInsertLocalImage })
 </script>

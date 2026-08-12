@@ -4,18 +4,11 @@
       <div class="modal-box picgo-modal">
         <div class="modal-header">
           <h3>
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-3px; margin-right:6px">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-              <circle cx="8.5" cy="8.5" r="1.5"/>
-              <polyline points="21 15 16 10 5 21"/>
-            </svg>
+            <Icon name="image" :size="16" style="vertical-align:-3px; margin-right:6px" />
             Image Upload (PicGo)
           </h3>
           <button class="modal-close" @click="$emit('close')">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
+            <Icon name="close" :size="16" />
           </button>
         </div>
 
@@ -30,7 +23,7 @@
             />
           </div>
           <div class="picgo-tip">
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <Icon name="info" :size="12" />
             PicGo 请求由<b>浏览器</b>直接发起。已自动使用当前页面的主机地址作为默认值。若 PicGo 在 NAS 上运行，保持默认即可；若在本机，请改为 <code>http://127.0.0.1:36677</code>。
           </div>
 
@@ -49,11 +42,7 @@
               <p>Uploading...</p>
             </template>
             <template v-else>
-              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="17 8 12 3 7 8"/>
-                <line x1="12" y1="3" x2="12" y2="15"/>
-              </svg>
+              <Icon name="upload" :size="32" :stroke-width="1.5" />
               <p>Click or drag images here to upload</p>
               <span>Supports PNG, JPG, GIF, WebP, SVG</span>
             </template>
@@ -88,7 +77,8 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useLocalStorage } from '@vueuse/core'
+import Icon from './Icon.vue'
+import { usePicgoServer } from '../composables/usePicgo'
 import { uploadFilesToPicGo } from '../utils/picgo'
 
 defineProps<{ visible: boolean }>()
@@ -98,8 +88,7 @@ const emit = defineEmits<{
   insert: [markdown: string]
 }>()
 
-const defaultPicGoUrl = 'http://127.0.0.1:36677'
-const serverUrl = useLocalStorage('picgo-server-url', defaultPicGoUrl)
+const serverUrl = usePicgoServer()
 const fileInput = ref<HTMLInputElement>()
 const isDragging = ref(false)
 const isUploading = ref(false)
