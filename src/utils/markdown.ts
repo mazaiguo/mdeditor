@@ -233,13 +233,22 @@ export function sanitizeHtml(html: string): string {
 /**
  * Parse YAML front matter from Markdown content.
  * Returns { meta, body } where meta is the parsed object and body is the remaining Markdown.
+ *
+ * Front matter is only recognized at the very start of the document — a `---`
+ * horizontal rule mid-document must never swallow the content that follows it
+ * (e.g. a section sitting between two rules, or a table header after a rule).
  */
 export function parseFrontMatter(source: string): { meta: Record<string, unknown> | null; body: string } {
-  const match = source.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/m)
+  const match = source.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/)
   if (!match) return { meta: null, body: source }
   try {
     const meta = yaml.load(match[1]) as Record<string, unknown>
-    return { meta: typeof meta === 'object' && meta !== null ? meta : null, body: match[2] }
+    // Only a plain mapping counts as front matter; anything else (list,
+    // scalar, null) means this wasn't front matter at all — keep the body.
+    if (typeof meta !== 'object' || meta === null || Array.isArray(meta)) {
+      return { meta: null, body: source }
+    }
+    return { meta, body: match[2] }
   } catch {
     return { meta: null, body: source }
   }

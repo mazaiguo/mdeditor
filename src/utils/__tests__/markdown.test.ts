@@ -23,6 +23,36 @@ describe('parseFrontMatter', () => {
     expect(meta).toBeNull()
     expect(body).toBe(src)
   })
+
+  it('does not treat mid-document --- rules as front matter delimiters', () => {
+    const src = [
+      '# 客户资料提供清单',
+      '',
+      '> 编制日期：2026-08-18',
+      '',
+      '---',
+      '',
+      '## 如何使用本文档回复',
+      '',
+      '| 编号 | 资料 |',
+      '| --- | --- |',
+      '| M1 | 图纸 |',
+      '',
+      '---',
+      '',
+      '## 速查表',
+    ].join('\n')
+    const { meta, body } = parseFrontMatter(src)
+    expect(meta).toBeNull()
+    expect(body).toBe(src)
+  })
+
+  it('rejects YAML that parses to a list instead of a mapping', () => {
+    const src = '---\n- a\n- b\n---\n# Body'
+    const { meta, body } = parseFrontMatter(src)
+    expect(meta).toBeNull()
+    expect(body).toBe(src)
+  })
 })
 
 describe('sanitizeHtml', () => {
