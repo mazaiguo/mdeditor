@@ -127,8 +127,8 @@ PORT=5080 node server.mjs
 ```
 
 - **Docker 多阶段构建**：见 `Dockerfile`，构建阶段产出 `dist/`，运行阶段仅包含 `dist/` 与 `server.mjs`
-- **CI/CD**：推送到 `main` / `master` 或打 `v*` 标签时，GitHub Actions 自动执行 `lint → build → test → docker build/push`，同时构建 `linux/amd64` 与 `linux/arm64` 镜像并发布到 GHCR
-- **NAS 部署**：参考仓库内 `deploy-to-nas.md` 与 `deploy.sh`
+- **CI/CD**：推送到 `main` / `master` 时构建镜像并打 `X.Y.Z-<短SHA>`（版本号取自 `package.json`，每次构建可追溯）与 `latest`；打 `v*` 标签时额外打 `X.Y.Z` / `X.Y` 正式版本 tag。镜像发布到 GHCR，同时构建 `linux/amd64` 与 `linux/arm64`
+- **NAS 部署**：参考仓库内 `deploy-to-nas.md` 与 `deploy.sh`（通过 `.env` 的 `IMAGE_TAG` 可钉住版本或回滚）
 - **Windows 本地预览构建产物**：运行 `open-dist.bat`（避免 `file://` 协议导致 ES 模块加载失败）
 
 ## 配置项

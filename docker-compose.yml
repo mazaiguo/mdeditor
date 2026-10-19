@@ -1,6 +1,8 @@
 services:
   md-editor:
-    image: ghcr.io/mazaiguo/mdeditor:latest
+    # IMAGE_TAG comes from .env (defaults to "latest"); pin it to a
+    # version tag like "1.0.3" or "1.0.3-a1b2c3d" to lock or roll back.
+    image: ghcr.io/mazaiguo/mdeditor:${IMAGE_TAG:-latest}
     container_name: md-editor
     restart: unless-stopped
     pull_policy: always

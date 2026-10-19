@@ -43,6 +43,10 @@ jobs:
       - name: Test
         run: npm run test
 
+      - name: Read package version
+        id: pkg
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -58,10 +62,14 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # main push  -> 1.0.3-a1b2c3d + latest (version from package.json,
+          #               every build is traceable/rollback-able)
+          # v1.2.0 tag -> 1.2.0 + 1.2 + latest (clean release)
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short,prefix=${{ steps.pkg.outputs.version }}-,enable={{is_default_branch}}
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push Docker image

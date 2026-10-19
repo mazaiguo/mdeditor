@@ -215,6 +215,40 @@ chmod +x /volume1/scripts/update-mdeditor-image.sh
 
 配置定时执行（参考方式一的 crontab / NAS 计划任务配置）。
 
+### 镜像版本管理与回滚
+
+镜像版本号取自 `package.json` 的 `version` 字段：
+
+| 触发方式 | 产生的镜像 tag | 用途 |
+|----------|----------------|------|
+| 推送到 `main` | `X.Y.Z-<短SHA>`（如 `1.0.3-a1b2c3d`）+ `latest` | 每次构建都可追溯、可回滚 |
+| 推送 `v*` 标签（如 `v1.0.3`） | `X.Y.Z` + `X.Y` | 正式发版（`latest` 由该提交推送到 `main` 时更新） |
+
+发布正式版流程：
+
+```bash
+# npm version 自动更新 package.json、提交并打 v* 标签
+npm version patch   # 1.0.3 -> 1.0.4
+
+# 推送提交与标签，CI 自动构建版本镜像
+git push origin main --follow-tags
+```
+
+在 NAS 上钉住版本或回滚：编辑 `.env` 设置 `IMAGE_TAG` 后重新执行 `deploy.sh`：
+
+```bash
+# 固定在正式版 1.0.3
+IMAGE_TAG=1.0.3
+
+# 或回滚到某次具体构建
+IMAGE_TAG=1.0.3-a1b2c3d
+
+# 恢复跟随最新
+IMAGE_TAG=latest
+```
+
+> 查看仓库全部可用版本：[GHCR Packages](https://github.com/mazaiguo/mdeditor/pkgs/container/mdeditor) 页面的 tags 列表。
+
 ---
 
 ## 方式三：本机构建后上传到 NAS

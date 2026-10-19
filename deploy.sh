@@ -20,6 +20,8 @@ fi
 
 echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 
+echo "Deploying image tag: ${IMAGE_TAG:-latest}"
+
 docker compose -f "$SCRIPT_DIR/docker-compose.yml" pull
 docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d
 
