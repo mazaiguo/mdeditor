@@ -1,4 +1,5 @@
 import MarkdownIt from 'markdown-it'
+import type StateBlock from 'markdown-it/lib/rules_block/state_block.mjs'
 import hljs from 'highlight.js'
 import DOMPurify from 'dompurify'
 import markdownItAnchor from 'markdown-it-anchor'
@@ -189,6 +190,65 @@ const md = new MarkdownIt({
     return `<div class="code-block-wrapper"${collapsedAttr}><div class="code-block-header">${trafficLights}${fileNameLabel}${headerRight}</div><div class="code-block-body"><pre class="line-numbers-gutter">${lineNumbers}</pre><pre class="hljs"><code class="language-${language}">${codeLines}</code></pre></div></div>`
   },
 })
+
+/**
+ * Relaxed ATX heading rule: "#标题" (no space after the hashes) is a heading.
+ * CommonMark requires the space, so CJK headings typed without one fell
+ * through to a paragraph and the raw #s showed up verbatim in the preview.
+ * Everything else mirrors the built-in rule; fenced and indented code
+ * ("#include", "# comment") is consumed by earlier rules and never reaches
+ * this one, so code blocks are unaffected.
+ */
+function looseAtxHeading(state: StateBlock, startLine: number, _endLine: number, silent: boolean): boolean {
+  let pos = state.bMarks[startLine] + state.tShift[startLine]
+  let max = state.eMarks[startLine]
+
+  // Lines indented 4+ spaces are indented code blocks, not headings
+  if (state.sCount[startLine] - state.blkIndent >= 4) { return false }
+
+  let ch = state.src.charCodeAt(pos)
+
+  if (ch !== 0x23/* # */ || pos >= max) { return false }
+
+  // count heading level
+  let level = 1
+  ch = state.src.charCodeAt(++pos)
+  while (ch === 0x23/* # */ && pos < max && level <= 6) {
+    level++
+    ch = state.src.charCodeAt(++pos)
+  }
+
+  if (level > 6) { return false }
+
+  if (silent) { return true }
+
+  // Trim trailing whitespace, then a closing "#..." run preceded by a
+  // space/tab (closed ATX: "## 标题 ##")
+  max = state.skipSpacesBack(max, pos)
+  const tmp = state.skipCharsBack(max, 0x23, pos)
+  const before = tmp > pos ? state.src.charCodeAt(tmp - 1) : 0
+  if (tmp > pos && (before === 0x20/* space */ || before === 0x09/* tab */)) {
+    max = tmp
+  }
+
+  state.line = startLine + 1
+
+  const tokenO = state.push('heading_open', 'h' + String(level), 1)
+  tokenO.markup = '########'.slice(0, level)
+  tokenO.map = [startLine, state.line]
+
+  const tokenI = state.push('inline', '', 0)
+  tokenI.content = state.src.slice(pos, max).trim()
+  tokenI.map = [startLine, state.line]
+  tokenI.children = []
+
+  const tokenC = state.push('heading_close', 'h' + String(level), -1)
+  tokenC.markup = '########'.slice(0, level)
+
+  return true
+}
+
+md.block.ruler.at('heading', looseAtxHeading, { alt: ['paragraph', 'reference', 'blockquote'] })
 
 // Rewrite local file paths in image src to use the dev server proxy
 const defaultImageRenderer = md.renderer.rules.image
