@@ -69,7 +69,6 @@
       :markdown="content"
       :html="renderedHtml"
       :theme="theme"
-      :auto-number="autoNumber"
       @close="showExport = false"
     />
 

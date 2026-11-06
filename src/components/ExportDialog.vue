@@ -59,7 +59,6 @@ const props = defineProps<{
   markdown: string
   html: string
   theme: string
-  autoNumber: boolean
 }>()
 
 const emit = defineEmits<{
@@ -75,7 +74,7 @@ watch(() => props.visible, (val) => {
 
 async function exportAs(format: ExportFormat) {
   const base = filename.value.trim() || 'document'
-  const opts = { filename: base, markdown: props.markdown, html: props.html, theme: props.theme, autoNumber: props.autoNumber }
+  const opts = { filename: base, markdown: props.markdown, html: props.html, theme: props.theme }
   if (format === 'docx') {
     exporting.value = true
     try {
