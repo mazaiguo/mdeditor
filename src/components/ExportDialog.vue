@@ -59,6 +59,7 @@ const props = defineProps<{
   markdown: string
   html: string
   theme: string
+  autoNumber: boolean
 }>()
 
 const emit = defineEmits<{
@@ -74,17 +75,18 @@ watch(() => props.visible, (val) => {
 
 async function exportAs(format: ExportFormat) {
   const base = filename.value.trim() || 'document'
+  const opts = { filename: base, markdown: props.markdown, html: props.html, theme: props.theme, autoNumber: props.autoNumber }
   if (format === 'docx') {
     exporting.value = true
     try {
-      await exportDocument('docx', { filename: base, markdown: props.markdown, html: props.html, theme: props.theme })
+      await exportDocument('docx', opts)
     } finally {
       exporting.value = false
       emit('close')
     }
     return
   }
-  await exportDocument(format, { filename: base, markdown: props.markdown, html: props.html, theme: props.theme })
+  await exportDocument(format, opts)
   emit('close')
 }
 </script>

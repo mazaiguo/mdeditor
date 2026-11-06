@@ -8,6 +8,12 @@ export interface ExportOptions {
   theme: string
   /** Filename without extension (already trimmed/non-empty). */
   filename: string
+  /**
+   * Matches the preview's `no-auto-number` state: when headings already
+   * carry manual numbering, the export wrapper must carry the same class
+   * or the collected CSS counters add a second number to every heading.
+   */
+  autoNumber?: boolean
 }
 
 /** Derive a document title from front-matter `title:` or the first H1, else "document". */
@@ -36,8 +42,9 @@ function collectStyles(): string {
 }
 
 /** Build a standalone HTML document that reproduces the preview, with print overrides. */
-export function buildFullHtml(title: string, html: string, theme: string): string {
+export function buildFullHtml(title: string, html: string, theme: string, autoNumber = true): string {
   const styles = collectStyles()
+  const paneClass = autoNumber ? `preview-pane theme-${theme}` : `preview-pane theme-${theme} no-auto-number`
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -107,7 +114,7 @@ body {
 </style>
 </head>
 <body>
-<div class="preview-pane theme-${theme}">
+<div class="${paneClass}">
 ${html}
 </div>
 </body>
@@ -169,8 +176,8 @@ function prepareHtmlForDocx(fullHtml: string): string {
   })
 }
 
-function exportPdf(title: string, html: string, theme: string): void {
-  const full = buildFullHtml(title, html, theme)
+function exportPdf(title: string, html: string, theme: string, autoNumber: boolean): void {
+  const full = buildFullHtml(title, html, theme, autoNumber)
   const win = window.open('', '_blank')
   if (!win) {
     alert('Pop-up was blocked. Please allow pop-ups for this page.')
@@ -195,10 +202,10 @@ function exportPdf(title: string, html: string, theme: string): void {
   }, 2000)
 }
 
-async function exportDocx(base: string, html: string, theme: string): Promise<void> {
+async function exportDocx(base: string, html: string, theme: string, autoNumber: boolean): Promise<void> {
   try {
     const { default: htmlDocx } = await import('html-docx-js-typescript')
-    const prepared = prepareHtmlForDocx(buildFullHtml(base, html, theme))
+    const prepared = prepareHtmlForDocx(buildFullHtml(base, html, theme, autoNumber))
     const blob = await htmlDocx.asBlob(prepared, {
       orientation: 'portrait',
       margins: { top: 1440, right: 1440, bottom: 1440, left: 1800 },
@@ -222,13 +229,14 @@ async function exportDocx(base: string, html: string, theme: string): Promise<vo
  */
 export async function exportDocument(format: ExportFormat, opts: ExportOptions): Promise<void> {
   const base = opts.filename || 'document'
+  const autoNumber = opts.autoNumber ?? true
   if (format === 'md') {
     downloadBlob(opts.markdown, `${base}.md`, 'text/markdown')
   } else if (format === 'html') {
-    downloadBlob(buildFullHtml(base, opts.html, opts.theme), `${base}.html`, 'text/html')
+    downloadBlob(buildFullHtml(base, opts.html, opts.theme, autoNumber), `${base}.html`, 'text/html')
   } else if (format === 'pdf') {
-    exportPdf(base, opts.html, opts.theme)
+    exportPdf(base, opts.html, opts.theme, autoNumber)
   } else if (format === 'docx') {
-    await exportDocx(base, opts.html, opts.theme)
+    await exportDocx(base, opts.html, opts.theme, autoNumber)
   }
 }
