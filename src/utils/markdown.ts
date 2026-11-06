@@ -348,10 +348,8 @@ export interface Heading {
 /**
  * Parse the document once and derive both the sanitized HTML and the heading
  * list from the same token stream (avoids parsing twice per keystroke).
- * autoNumber is false when the headings already carry manual numbering
- * (e.g. "1. Intro", "1.1 Scope"), so the preview skips CSS counter numbers.
  */
-export function parseDocument(source: string): { html: string; headings: Heading[]; autoNumber: boolean } {
+export function parseDocument(source: string): { html: string; headings: Heading[] } {
   const { meta, body } = parseFrontMatter(source)
   const fmHtml = meta ? renderFrontMatter(meta) : ''
 
@@ -376,11 +374,7 @@ export function parseDocument(source: string): { html: string; headings: Heading
     }
   }
 
-  const MANUAL_NUMBER_RE = /^\d+(\.\d+)*[.、．]/
-  const numbered = headings.filter(h => MANUAL_NUMBER_RE.test(h.text)).length
-  const autoNumber = !(numbered > 0 && numbered >= headings.length / 2)
-
-  return { html, headings, autoNumber }
+  return { html, headings }
 }
 
 export function renderMarkdown(source: string): string {

@@ -47,7 +47,6 @@
             :html="renderedHtml"
             :theme="theme"
             :font-size="fontSize"
-            :auto-number="autoNumber"
             @replace-image="handleReplaceImage"
           />
         </div>
@@ -105,7 +104,6 @@ const {
   lineCount,
   renderedHtml,
   headings,
-  autoNumber,
   storageQuotaExceeded,
   toggleTheme,
   setViewMode,

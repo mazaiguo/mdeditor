@@ -2,7 +2,7 @@
   <div
     ref="previewRoot"
     class="preview-pane"
-    :class="[`theme-${theme}`, { 'no-auto-number': !autoNumber }]"
+    :class="[`theme-${theme}`]"
     :style="{ fontSize: fontSize + 'px' }"
     @click="handleClick"
     @contextmenu.prevent="handleContextMenu"
@@ -50,14 +50,11 @@ import ContextMenu from './ContextMenu.vue'
 import { useMermaid } from '../composables/useMermaid'
 import { useImageContextMenu } from '../composables/useImageContextMenu'
 
-const props = withDefaults(defineProps<{
+const props = defineProps<{
   html: string
   theme: 'light' | 'dark'
   fontSize: number
-  autoNumber?: boolean
-}>(), {
-  autoNumber: true,
-})
+}>()
 
 const emit = defineEmits<{
   'replace-image': [oldPath: string, newUrl: string]

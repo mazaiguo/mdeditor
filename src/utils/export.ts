@@ -37,8 +37,7 @@ function collectStyles(): string {
 
 /**
  * Build a standalone HTML document that reproduces the preview, with print
- * overrides. The wrapper always carries `no-auto-number`: exports must show
- * headings exactly as authored, never with CSS-counter numbering added.
+ * overrides. Headings render exactly as authored — no numbering is added.
  */
 export function buildFullHtml(title: string, html: string, theme: string): string {
   const styles = collectStyles()
@@ -111,7 +110,7 @@ body {
 </style>
 </head>
 <body>
-<div class="preview-pane theme-${theme} no-auto-number">
+<div class="preview-pane theme-${theme}">
 ${html}
 </div>
 </body>

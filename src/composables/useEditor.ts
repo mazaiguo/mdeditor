@@ -137,7 +137,6 @@ export function useEditor() {
   const parsed = computed(() => parseDocument(debouncedContent.value))
   const renderedHtml = computed(() => parsed.value.html)
   const headings = computed(() => parsed.value.headings)
-  const autoNumber = computed(() => parsed.value.autoNumber)
 
   function toggleTheme() {
     theme.value = theme.value === 'light' ? 'dark' : 'light'
@@ -186,7 +185,6 @@ export function useEditor() {
     lineCount,
     renderedHtml,
     headings,
-    autoNumber,
     storageQuotaExceeded,
     toggleTheme,
     setViewMode,

@@ -24,21 +24,6 @@
   border-radius: 3px;
 }
 
-/* ===== Heading Auto Numbering (skipped when headings are manually numbered) ===== */
-.preview-pane {
-  counter-reset: h1counter 0 h2counter 0 h3counter 0 h4counter 0;
-}
-
-.preview-pane h1 { counter-reset: h2counter 0 h3counter 0 h4counter 0; counter-increment: h1counter; }
-.preview-pane h2 { counter-reset: h3counter 0 h4counter 0; counter-increment: h2counter; }
-.preview-pane h3 { counter-reset: h4counter 0; counter-increment: h3counter; }
-.preview-pane h4 { counter-increment: h4counter; }
-
-.preview-pane:not(.no-auto-number) h1::before { content: counter(h1counter) ". "; }
-.preview-pane:not(.no-auto-number) h2::before { content: counter(h1counter) "." counter(h2counter) " "; }
-.preview-pane:not(.no-auto-number) h3::before { content: counter(h1counter) "." counter(h2counter) "." counter(h3counter) " "; }
-.preview-pane:not(.no-auto-number) h4::before { content: counter(h1counter) "." counter(h2counter) "." counter(h3counter) "." counter(h4counter) " "; }
-
 /* ===== Markdown Content Styles ===== */
 .preview-pane h1,
 .preview-pane h2,
